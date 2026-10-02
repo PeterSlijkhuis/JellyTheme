@@ -15,23 +15,45 @@ using Xunit;
 
 namespace Jellyfin.Plugin.JellyTheme.Tests;
 
-public sealed class PlexThemeServiceTests : IDisposable
+public sealed class ThemeServiceTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory().FullName;
 
     public void Dispose() => Directory.Delete(_dir, true);
 
     [Fact]
-    public void OnlyShowsWithTvdbIdAndNoThemeNeedOne()
+    public void ShowsNeedTvdbOrTmdbIdAndNoTheme()
     {
         var show = Show();
-        Assert.True(PlexThemeService.NeedsTheme(show));
+        Assert.True(ThemeService.NeedsTheme(show));
+        Assert.False(ThemeService.NeedsTheme(new Series { Path = _dir }));
 
-        Assert.False(PlexThemeService.NeedsTheme(new Series { Path = _dir }));
-        Assert.False(PlexThemeService.NeedsTheme(new Movie { Path = _dir, ProviderIds = show.ProviderIds }));
+        var gone = new Series { Path = Path.Combine(_dir, "deleted") };
+        gone.SetProviderId(MetadataProvider.Tvdb, "81189");
+        Assert.False(ThemeService.NeedsTheme(gone));
 
-        File.WriteAllBytes(Path.Combine(_dir, "theme.mp3"), [1]);
-        Assert.False(PlexThemeService.NeedsTheme(show));
+        var tmdbOnly = new Series { Path = _dir };
+        tmdbOnly.SetProviderId(MetadataProvider.Tmdb, "1396");
+        Assert.True(ThemeService.NeedsTheme(tmdbOnly));
+
+        File.WriteAllBytes(Path.Combine(_dir, "theme.m4a"), [1]);
+        Assert.False(ThemeService.NeedsTheme(show));
+    }
+
+    [Fact]
+    public void MoviesNeedTmdbIdAndTheirOwnFolder()
+    {
+        var movie = new Movie { Path = Path.Combine(_dir, "The Matrix.mkv") };
+        movie.SetProviderId(MetadataProvider.Tmdb, "603");
+        Assert.Equal(_dir, ThemeService.ThemeFolder(movie));
+        Assert.True(ThemeService.NeedsTheme(movie));
+
+        movie.IsInMixedFolder = true;
+        Assert.False(ThemeService.NeedsTheme(movie));
+
+        var tvdbOnly = new Movie { Path = Path.Combine(_dir, "x.mkv") };
+        tvdbOnly.SetProviderId(MetadataProvider.Tvdb, "1");
+        Assert.False(ThemeService.NeedsTheme(tvdbOnly));
     }
 
     [Fact]
@@ -63,12 +85,12 @@ public sealed class PlexThemeServiceTests : IDisposable
         return show;
     }
 
-    private static (PlexThemeService Service, Mock<IProviderManager> Providers) Service(HttpStatusCode status)
+    private static (ThemeService Service, Mock<IProviderManager> Providers) Service(HttpStatusCode status)
     {
         var http = new Mock<IHttpClientFactory>();
         http.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient(new Handler(status)));
         var providers = new Mock<IProviderManager>();
-        return (new PlexThemeService(http.Object, providers.Object, Mock.Of<IFileSystem>(), NullLogger<PlexThemeService>.Instance), providers);
+        return (new ThemeService(http.Object, providers.Object, Mock.Of<IFileSystem>(), NullLogger<ThemeService>.Instance), providers);
     }
 
     private sealed class Handler(HttpStatusCode status) : HttpMessageHandler

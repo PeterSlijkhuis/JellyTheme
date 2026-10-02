@@ -23,7 +23,7 @@ public sealed class PlexThemeDownloaderTests : IDisposable
         Assert.True(await PlexThemeDownloader.TryDownloadAsync(http, "81189", _dir, CancellationToken.None));
         Assert.Equal("https://tvthemes.plexapp.com/81189.mp3", requested?.ToString());
         Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(Path.Combine(_dir, "theme.mp3")));
-        Assert.True(PlexThemeDownloader.HasTheme(_dir));
+        Assert.True(ThemeFiles.HasTheme(_dir));
     }
 
     [Fact]
@@ -57,16 +57,16 @@ public sealed class PlexThemeDownloaderTests : IDisposable
     {
         var http = Client(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BrokenStream()) });
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => PlexThemeDownloader.TryDownloadAsync(http, "81189", _dir, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => PlexThemeDownloader.TryDownloadAsync(http, "81189", _dir, CancellationToken.None));
         Assert.Empty(Directory.GetFiles(_dir));
     }
 
     [Fact]
     public void ThemeMusicFolderCountsAsTheme()
     {
-        Assert.False(PlexThemeDownloader.HasTheme(_dir));
+        Assert.False(ThemeFiles.HasTheme(_dir));
         Directory.CreateDirectory(Path.Combine(_dir, "theme-music"));
-        Assert.True(PlexThemeDownloader.HasTheme(_dir));
+        Assert.True(ThemeFiles.HasTheme(_dir));
     }
 
     private static HttpClient Client(Func<HttpRequestMessage, HttpResponseMessage> respond) => new(new Handler(respond));

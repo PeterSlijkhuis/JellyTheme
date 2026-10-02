@@ -12,7 +12,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
-        serviceCollection.AddSingleton<PlexThemeService>();
-        serviceCollection.AddHostedService<NewShowListener>();
+        serviceCollection.AddSingleton<ThemeService>();
+        serviceCollection.AddHostedService<NewItemListener>();
     }
 }
