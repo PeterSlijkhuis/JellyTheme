@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -19,19 +17,19 @@ namespace Jellyfin.Plugin.JellyTheme;
 public class PlexThemeTask : IScheduledTask
 {
     private readonly ILibraryManager _libraryManager;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly PlexThemeService _themes;
     private readonly ILogger<PlexThemeTask> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PlexThemeTask"/> class.
     /// </summary>
     /// <param name="libraryManager">Library manager.</param>
-    /// <param name="httpClientFactory">Http client factory.</param>
+    /// <param name="themes">Plex theme service.</param>
     /// <param name="logger">Logger.</param>
-    public PlexThemeTask(ILibraryManager libraryManager, IHttpClientFactory httpClientFactory, ILogger<PlexThemeTask> logger)
+    public PlexThemeTask(ILibraryManager libraryManager, PlexThemeService themes, ILogger<PlexThemeTask> logger)
     {
         _libraryManager = libraryManager;
-        _httpClientFactory = httpClientFactory;
+        _themes = themes;
         _logger = logger;
     }
 
@@ -42,7 +40,7 @@ public class PlexThemeTask : IScheduledTask
     public string Key => "JellyThemePlexTv";
 
     /// <inheritdoc />
-    public string Description => "Saves theme.mp3 for every TV show that has a TVDB id and no theme yet.";
+    public string Description => "Saves theme.mp3 for every TV show that has a TVDB id and no theme yet. New shows are also handled as soon as their metadata arrives.";
 
     /// <inheritdoc />
     public string Category => "JellyTheme";
@@ -55,34 +53,20 @@ public class PlexThemeTask : IScheduledTask
             IncludeItemTypes = [BaseItemKind.Series],
             IsVirtualItem = false,
             Recursive = true,
-        }).Where(s => !string.IsNullOrEmpty(s.Path) && !PlexThemeDownloader.HasTheme(s.Path)).ToList();
+        }).Where(PlexThemeService.NeedsTheme).ToList();
 
-        var http = _httpClientFactory.CreateClient();
         int saved = 0;
         for (int i = 0; i < series.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var show = series[i];
-            if (show.TryGetProviderId(MetadataProvider.Tvdb, out var tvdbId))
+            if (await _themes.TrySaveAsync(series[i], cancellationToken).ConfigureAwait(false))
             {
-                try
-                {
-                    if (await PlexThemeDownloader.TryDownloadAsync(http, tvdbId, show.Path, cancellationToken).ConfigureAwait(false))
-                    {
-                        saved++;
-                        _logger.LogInformation("Saved Plex theme for {Name}", show.Name);
-                    }
-                }
-                catch (Exception ex) when (ex is HttpRequestException or System.IO.IOException or UnauthorizedAccessException)
-                {
-                    _logger.LogWarning(ex, "Could not save Plex theme for {Name}", show.Name);
-                }
+                saved++;
             }
 
             progress.Report(100.0 * (i + 1) / series.Count);
         }
 
-        // ponytail: themes are picked up on the next library scan; trigger a refresh here if that lag bothers anyone.
         _logger.LogInformation("Saved {Saved} Plex themes, checked {Count} shows without one", saved, series.Count);
     }
 
