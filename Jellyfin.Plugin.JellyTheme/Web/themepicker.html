@@ -29,6 +29,8 @@
         #JellyThemePage .jt-play { min-width: 6.5em; margin: 0; }
         #JellyThemePage .jt-use { margin: 0; }
         #JellyThemePage .jt-message { margin: .6em 0 0; }
+        #JellyThemePage .jt-keywords { margin-top: .4em; font-size: .9em; }
+        #JellyThemePage .jt-keywords .emby-button { margin: 0; padding: .2em .8em; border-radius: 1em; font-size: .9em; }
         @media (max-width: 40em) {
             #JellyThemePage .jt-poster { display: none; }
             #JellyThemePage .jt-result { flex-wrap: wrap; }
@@ -151,6 +153,19 @@
                     .sort(orders[sort.value]);
             }
 
+            // One tap swaps the last words of the search. "soundtrack" finds more, but also full-album uploads, so it isn't the default.
+            const KEYWORDS = ['main theme', 'theme song', 'soundtrack', 'opening', 'intro'];
+
+            function withKeyword(query, keyword) {
+                let base = query.trim();
+                const lower = base.toLowerCase();
+                const old = KEYWORDS.find(k => lower.endsWith(' ' + k));
+                if (old) {
+                    base = base.slice(0, -old.length).trim();
+                }
+                return base + ' ' + keyword;
+            }
+
             const kinds = { Movie: 'Movie', Series: 'Show', Collection: 'Collection' };
 
             function render() {
@@ -187,10 +202,20 @@
                 const query = el('input', { type: 'search', className: 'emby-input', value: item.Query, title: 'YouTube search words' });
                 const find = button('Find themes', 'button-submit');
                 const results = el('div');
+                const keywords = el('div', { className: 'jt-row jt-keywords' }, el('span', { className: 'jt-muted', textContent: 'Try:' }),
+                    ...KEYWORDS.map(k => {
+                        const b = button(k);
+                        b.addEventListener('click', () => {
+                            query.value = withKeyword(query.value, k);
+                            search();
+                        });
+                        return b;
+                    }));
                 const body = el('div', { className: 'jt-body' },
                     el('h3', { className: 'jt-title' }, el('a', { href: '#/details?id=' + item.Id, textContent: label(item) })),
                     el('div', { className: 'jt-muted', textContent: kinds[item.Type] + (item.Type === 'Collection' ? ', plays on the collection page' : '') }),
                     el('div', { className: 'jt-row jt-search' }, query, find),
+                    keywords,
                     results);
 
                 async function search() {
@@ -255,7 +280,7 @@
                         const saved = await ApiClient.ajax({ type: 'POST', url: api('Save/' + item.Id, { videoId: video.Id }), dataType: 'json' });
                         stop();
                         items = items.filter(i => i.Id !== item.Id);
-                        done(item, body, saved && saved.SubmitUrl);
+                        done(item, body, saved && saved.SubmitUrl, video.Duration);
                     } catch (e) {
                         use.disabled = false;
                         use.textContent = 'Save failed, try again';
@@ -266,7 +291,7 @@
             }
 
             // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
-            function done(item, body, submitUrl) {
+            function done(item, body, submitUrl, seconds) {
                 const close = button('Done');
                 close.addEventListener('click', () => body.parentElement.remove());
                 const actions = el('div', { className: 'jt-row' });
@@ -274,11 +299,16 @@
                     el('h3', { className: 'jt-title', textContent: label(item) }),
                     el('p', { className: 'jt-message', textContent: 'Saved. This theme now plays for ' + label(item) + '.' })
                 ];
-                if (item.Type === 'Collection') {
-                    children.push(el('p', { className: 'jt-message jt-muted', textContent: 'ThemerrDB has no collections, so there is nothing to submit.' }));
-                    actions.append(close);
-                } else if (submitUrl) {
-                    children.push(el('p', { className: 'jt-message jt-muted', textContent: 'Sure it is the right one? Submit it to ThemerrDB so every Themerr and JellyTheme user gets it automatically. This opens a pre-filled form on GitHub; you only press Create. It needs a free GitHub account.' }));
+                if (submitUrl) {
+                    // ThemerrDB's theme guidelines: 0:20 to 5:00, audible early, not age or region locked, not a fan edit or trailer.
+                    const guidelines = el('a', { href: 'https://github.com/LizardByte/ThemerrDB/blob/master/docs/themeGuidelines.md', target: '_blank', rel: 'noopener', textContent: 'theme guidelines' });
+                    children.push(el('p', { className: 'jt-message jt-muted' },
+                        'Sure it is the right one? Submit it to ThemerrDB so every Themerr and JellyTheme user gets it automatically. ',
+                        'This opens their request form on GitHub with the TMDB link and YouTube link filled in; check it and press Create. It needs a free GitHub account. ',
+                        'Their reviewers follow the ', guidelines, ': the official theme, not a cover, trailer or movie scene, and no age or region lock.'));
+                    if (seconds && (seconds < 20 || seconds > 300)) {
+                        children.push(el('p', { className: 'jt-message', textContent: 'Note: this video is ' + clock(seconds) + ' long. ThemerrDB prefers themes between 0:20 and 5:00, so it may be turned down.' }));
+                    }
                     const submit = el('a', { href: submitUrl, target: '_blank', rel: 'noopener', className: 'raised button-submit emby-button', textContent: 'Submit to ThemerrDB', style: 'text-decoration:none' });
                     actions.append(submit, close);
                 } else {

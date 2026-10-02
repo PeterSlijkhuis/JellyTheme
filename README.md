@@ -1,14 +1,16 @@
 <p align="center">
-  <img src="assets/banner.png" alt="JellyTheme: theme songs for every movie and TV show" width="100%">
+  <img src="assets/demo.gif" alt="JellyTheme in 20 seconds: themes found automatically, the rest picked in a few clicks" width="100%">
+  <br>
+  <a href="assets/demo.mp4">Watch with sound (MP4, 1 MB)</a>
 </p>
 
 # JellyTheme
 
-**A Jellyfin plugin that adds theme songs to your movies and TV shows, with as little work from you as possible.**
+**A Jellyfin plugin that adds theme songs to your movies, TV shows and collections, with as little work from you as possible.**
 
 Theme songs are the music that plays while you browse a movie or show in Jellyfin. Jellyfin plays them when it finds a `theme.mp3` (or similar) file in the item's folder, but it doesn't download them for you. JellyTheme does.
 
-It fills themes automatically from two trusted sources, keeps doing that for everything you add later, and gives you a quick picker page for whatever is left.
+It fills themes automatically from two trusted sources, keeps doing that for everything you add later, and gives you a quick picker page for whatever is left: ranked YouTube results, one-click previews, and an option to share a confirmed pick with ThemerrDB so everyone gets it.
 
 ## Contents
 
@@ -36,7 +38,7 @@ JellyTheme tries three sources, in this order, and stops at the first one that h
 | # | Source | Covers | Needs | Saved as | Automatic? |
 |---|---|---|---|---|---|
 | 1 | **Plex** TV theme server | TV shows | TVDB id | `theme.mp3` | Yes |
-| 2 | **ThemerrDB** (community-picked YouTube links) | Movies and TV shows | TMDB id | `theme.m4a` | Yes |
+| 2 | **ThemerrDB** (community-picked YouTube links) | Movies, TV shows and collections | TMDB id | `theme.m4a` | Yes |
 | 3 | **Missing themes page** (you pick from YouTube) | Anything left, including collections | Nothing | `theme.m4a` | No, you choose |
 
 The automatic sources run:
@@ -52,7 +54,6 @@ The ids (TVDB, TMDB) come from Jellyfin's normal metadata. If your movies and sh
 
 - **It never replaces a theme you already have.** Any `theme.*` file or `theme-music` folder means the item is skipped. To replace a theme, delete the file first.
 - **No themes for movies that share a folder.** Jellyfin plays a folder's theme for every movie in it, so a theme there would play for all of them. Give each movie its own folder (for example `Movies/The Matrix (1999)/The Matrix (1999).mkv`) to get one.
-- **No automatic themes for collections.** Neither Plex nor ThemerrDB has collection themes, so collections only get one when you pick it on the Missing themes page.
 - **No themes for episodes, seasons, music, books or other library types.** Only movies, shows and collections.
 - **No automatic YouTube guessing.** YouTube search only happens on the Missing themes page, and only you decide what gets saved. That keeps wrong songs out of your library.
 - **No theme videos (backdrops).** Audio only.
@@ -105,12 +106,14 @@ After that there is nothing you have to do. New movies and shows get themes on t
 
 1. Open **Dashboard**, then **JellyTheme** in the menu. Only administrators can open it.
 2. The page lists every movie, show and collection that can hold a theme but has none, with its poster. Narrow it down with the **name filter** or the **Show** selector (movies, shows or collections), and change the order with **Sort by**: name, recently added, or year. It shows 50 items at a time; press **Show more** for the next 50.
-3. Press **Find themes** (or Enter in the search box). The search is pre-filled, for example "The Matrix 1999 main theme" for a movie or "Friends theme song" for a show. JellyTheme fetches the top 20 YouTube results and shows the 5 most theme-like: official "Topic" channels and titles with "theme", "intro" or "soundtrack" rank higher; covers, reactions, trailers, 10-hour loops and very short clips rank lower. The top one is marked **Best match**. If the results are wrong, edit the search and press **Search again**. Adding the composer, "opening" or "soundtrack" often helps.
+3. Press **Find themes** (or Enter in the search box). The search is pre-filled, for example "The Matrix 1999 main theme" for a movie or "Friends theme song" for a show. JellyTheme fetches the top 20 YouTube results and shows the 5 most theme-like: official "Topic" channels, titles with "theme", "intro" or "soundtrack", and videos between 0:20 and 2:00 (what ThemerrDB prefers) rank higher; covers, reactions, trailers, movie scenes, 10-hour loops and very short clips rank lower. The top one is marked **Best match**. Not right? Tap one of the **Try:** words under the search (main theme, theme song, soundtrack, opening, intro) to swap the last words and search again, or type your own, for example the composer's name. "soundtrack" finds the most, but also full-album uploads, so it isn't the default.
 4. Press **Play** on a result to listen, and **Stop** to stop. Only one preview plays at a time: starting another stops the current one. The server starts downloading all results as soon as the search finishes, so by the time you press play it is usually ready. A result you play before its download is done shows **Loading...** for a few seconds. Videos longer than about 30 minutes of audio are skipped.
 5. Press **Use this** on the right one. JellyTheme saves its audio as `theme.m4a` in that item's folder, and the theme plays from then on. Press **Done** to remove the card.
-6. **Share it (optional).** For movies and shows, the card then offers **Submit to ThemerrDB**. Only press it when you are sure the theme is right. It opens a pre-filled request on GitHub with the item's TMDB link and the YouTube link; you just press **Create**. Once ThemerrDB's reviewers accept it, every Themerr and JellyTheme user gets that theme automatically.
+6. **Share it (optional).** The card then offers **Submit to ThemerrDB**. Only press it when you are sure the theme is right. It opens ThemerrDB's own "Add/Update Theme Song" form on GitHub, filled in the way [their README](https://github.com/LizardByte/ThemerrDB#addingupdating-theme-song) asks: the item's TMDB page as **Database URL** (a `/movie/`, `/tv/` or `/collection/` link) and a plain `https://www.youtube.com/watch?v=...` link as **YouTube Theme Song Video URL**. These form fields become the issue body. Check them and press **Create**. If ThemerrDB already lists a theme that JellyTheme could not download, the form also fills in the **Replacement Reason**, which their form asks for. Their bot checks the link and renames the issue, and once a reviewer approves it, every Themerr and JellyTheme user gets that theme automatically.
 
-**Collections.** A collection's theme is saved in Jellyfin's own collection folder (inside the Jellyfin data folder, `data/collections/<name> [boxset]`), not in your media folders, and plays when you open the collection. Because it lives in the Jellyfin data folder, back that folder up if you want to keep collection themes when reinstalling Jellyfin.
+   Before you submit, check the pick against the [ThemerrDB theme guidelines](https://github.com/LizardByte/ThemerrDB/blob/master/docs/themeGuidelines.md): ideally 0:20 to 2:00 long (over 5:00 is rejected, and the card warns you), audible within the first 15 seconds, not age-restricted, available in the United States, the real theme rather than a cover, fan edit, trailer or movie scene, and for collections a theme that fits the whole collection.
+
+**Collections.** Collections get a theme from ThemerrDB automatically when it has one (by TMDB collection id), and otherwise show up here. A collection's theme is saved in Jellyfin's own collection folder (inside the Jellyfin data folder, `data/collections/<name> [boxset]`), not in your media folders, and plays when you open the collection. Because it lives in the Jellyfin data folder, back that folder up if you want to keep collection themes when reinstalling Jellyfin.
 
 Picked the wrong one? Delete `theme.m4a` from the item's folder. The item shows up in the list again on the next page load.
 
@@ -178,7 +181,7 @@ Usually 1 to 5 MB per theme.
 No. It needs Jellyfin 12.1 or newer.
 
 **Can collections have a theme?**
-Yes, pick one on the Missing themes page. It plays when you open the collection. Collections never get one automatically, because Plex and ThemerrDB have none.
+Yes. ThemerrDB has movie collection themes, so collections with a TMDB id get one automatically when ThemerrDB lists it. For the rest, pick one on the Missing themes page. It plays when you open the collection.
 
 **What does "Submit to ThemerrDB" send?**
 Nothing by itself. It opens a GitHub page with the form already filled in (title, TMDB link, YouTube link). Nothing is sent until you press Create on GitHub, signed in with your own account.
@@ -238,7 +241,8 @@ Two things to know:
 | `manifest.json` | The repository file Jellyfin reads. Updated by the workflow; don't edit versions by hand. |
 | `.github/workflows/release.yml` | The Release workflow. |
 | `.github/scripts/release.py` | Version bumping, YoutubeExplode check, and manifest updates. |
-| `assets/banner.png` | The catalog and README image. Its source is `assets/banner.html`. |
+| `assets/banner.png` | The catalog image. Its source is `assets/banner.html`. |
+| `assets/demo.gif`, `assets/demo.mp4` | The README demo (silent GIF, and the MP4 with sound). |
 
 ## Development
 
