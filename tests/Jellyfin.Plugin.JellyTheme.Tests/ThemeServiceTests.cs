@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
@@ -64,6 +65,16 @@ public sealed class ThemeServiceTests : IDisposable
         var noIds = new Movie { Path = Path.Combine(_dir, "Home Video.mkv") };
         Assert.True(ThemeService.MissingTheme(noIds));
         Assert.False(ThemeService.NeedsTheme(noIds));
+    }
+
+    [Fact]
+    public void CollectionsArePickedByHandOnly()
+    {
+        var collection = new BoxSet { Path = _dir };
+        collection.SetProviderId(MetadataProvider.Tmdb, "2344");
+        Assert.Equal(_dir, ThemeService.ThemeFolder(collection));
+        Assert.True(ThemeService.MissingTheme(collection));
+        Assert.False(ThemeService.NeedsTheme(collection));
     }
 
     [Fact]

@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -44,28 +46,36 @@ public class ThemePickerController : ControllerBase
     }
 
     /// <summary>
-    /// Lists movies and shows that can hold a theme but have none.
+    /// Lists movies, shows and collections that can hold a theme but have none.
     /// </summary>
     /// <returns>The items, sorted by name.</returns>
     [HttpGet("Missing")]
     public ActionResult Missing()
         => Ok(_libraryManager.GetItemList(new InternalItemsQuery
             {
-                IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie],
+                IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie, BaseItemKind.BoxSet],
                 IsVirtualItem = false,
                 Recursive = true,
             })
             .Where(ThemeService.MissingTheme)
             .OrderBy(i => i.SortName)
-            .Select(i => new { i.Id, i.Name, Type = i is Movie ? "Movie" : "Series", Year = i.ProductionYear }));
+            .Select(i => new
+            {
+                i.Id,
+                i.Name,
+                Type = i switch { Movie => "Movie", BoxSet => "Collection", _ => "Series" },
+                Year = i.ProductionYear,
+                Added = i.DateCreated,
+                Query = DefaultQuery(i),
+            }));
 
     /// <summary>
     /// Searches YouTube for theme candidates.
     /// </summary>
     /// <param name="itemId">Movie or series id.</param>
-    /// <param name="query">Search text; defaults to the title plus "main theme" or "opening theme".</param>
+    /// <param name="query">Search text; defaults to <see cref="ThemeSearch.DefaultQuery"/>.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Up to 5 videos.</returns>
+    /// <returns>The 5 most theme-like of the top 20 YouTube results.</returns>
     [HttpGet("Candidates/{itemId}")]
     public async Task<ActionResult> Candidates(Guid itemId, [FromQuery] string? query, CancellationToken cancellationToken)
     {
@@ -75,10 +85,12 @@ public class ThemePickerController : ControllerBase
             return NotFound();
         }
 
-        query = string.IsNullOrWhiteSpace(query) ? $"{item.Name} {item.ProductionYear} {(item is Movie ? "main theme" : "opening theme")}" : query;
+        query = string.IsNullOrWhiteSpace(query) ? DefaultQuery(item) : query;
         try
         {
-            var videos = await YouTubeAudio.SearchAsync(_httpClientFactory.CreateClient(), query, 5, cancellationToken).ConfigureAwait(false);
+            var found = await YouTubeAudio.SearchAsync(_httpClientFactory.CreateClient(), query, 20, cancellationToken).ConfigureAwait(false);
+            var videos = ThemeSearch.Best(found, v => ThemeSearch.Score(SearchName(item), v.Title, v.Author.ChannelTitle, v.Duration), 5);
+            _themes.PrefetchPreviews(videos.Select(v => v.Id));
             return Ok(videos.Select(v => new { Id = v.Id.Value, v.Title, Author = v.Author.ChannelTitle, Duration = v.Duration?.TotalSeconds }));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -121,7 +133,7 @@ public class ThemePickerController : ControllerBase
     /// <param name="itemId">Movie or series id.</param>
     /// <param name="videoId">YouTube video id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>204 when saved.</returns>
+    /// <returns>The pre-filled ThemerrDB submit link, or null when the item has no TMDB id.</returns>
     [HttpPost("Save/{itemId}")]
     public async Task<ActionResult> Save(Guid itemId, [FromQuery] string videoId, CancellationToken cancellationToken)
     {
@@ -133,7 +145,16 @@ public class ThemePickerController : ControllerBase
 
         try
         {
-            return await _themes.SaveYouTubeAsync(item, id, cancellationToken).ConfigureAwait(false) ? NoContent() : Conflict();
+            if (!await _themes.SaveYouTubeAsync(item, id, cancellationToken).ConfigureAwait(false))
+            {
+                return Conflict();
+            }
+
+            // Items without a TMDB id can't be submitted: ThemerrDB keys everything on it. It has no collections.
+            var submitUrl = item is Movie or Series && item.TryGetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Tmdb, out var tmdbId)
+                ? ThemerrDb.SubmitUrl(item is Movie, ThemeSearch.CleanName(item.Name), item.ProductionYear, tmdbId, id.Value)
+                : null;
+            return Ok(new { SubmitUrl = submitUrl });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -141,4 +162,10 @@ public class ThemePickerController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway);
         }
     }
+
+    private static string SearchName(BaseItem item) => item is BoxSet ? ThemeSearch.CollectionName(item.Name) : item.Name;
+
+    // Collections search like a movie without a year: "The Matrix main theme".
+    private static string DefaultQuery(BaseItem item)
+        => ThemeSearch.DefaultQuery(SearchName(item), item is BoxSet ? null : item.ProductionYear, item is not Series);
 }

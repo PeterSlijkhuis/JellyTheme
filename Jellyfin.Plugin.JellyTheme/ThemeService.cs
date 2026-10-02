@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
@@ -27,6 +29,7 @@ public class ThemeService
     private readonly IFileSystem _fileSystem;
     private readonly IApplicationPaths _applicationPaths;
     private readonly ILogger<ThemeService> _logger;
+    private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _previews = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ThemeService"/> class.
@@ -46,14 +49,14 @@ public class ThemeService
     }
 
     /// <summary>
-    /// The folder a theme goes in: the show folder, or the movie's own folder.
+    /// The folder a theme goes in: the show or collection folder, or the movie's own folder.
     /// Movies sharing a folder with other movies get none, since the theme would play for all of them.
     /// </summary>
     /// <param name="item">Library item.</param>
     /// <returns>The folder, or null.</returns>
     public static string? ThemeFolder(BaseItem item) => item switch
     {
-        Series => item.Path,
+        Series or BoxSet => item.Path,
         Movie when !item.IsInMixedFolder => item.ContainingFolderPath,
         _ => null,
     };
@@ -82,8 +85,10 @@ public class ThemeService
     /// </summary>
     /// <param name="item">Library item.</param>
     /// <returns>True if worth looking up.</returns>
+    /// <remarks>Collections are skipped: their TMDB id is a collection id, which ThemerrDB doesn't have, so they are picked by hand.</remarks>
     public static bool NeedsTheme(BaseItem item)
-        => (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
+        => item is not BoxSet
+           && (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
            && MissingTheme(item);
 
     /// <summary>
@@ -133,7 +138,32 @@ public class ThemeService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Path of the cached audio, or null if the video has no usable audio.</returns>
     public Task<string?> CachePreviewAsync(VideoId videoId, CancellationToken cancellationToken)
-        => YouTubeAudio.CacheAsync(_httpClientFactory.CreateClient(), videoId, Path.Combine(_applicationPaths.CachePath, "jellytheme"), cancellationToken);
+    {
+        // One shared download per video: a prefetch, a preview and a save all wait on the same one,
+        // and it keeps going when one of them gives up, so the next click finds it done.
+        var key = videoId.Value;
+        var download = _previews.GetOrAdd(key, _ => new Lazy<Task<string?>>(() =>
+            YouTubeAudio.CacheAsync(_httpClientFactory.CreateClient(), videoId, Path.Combine(_applicationPaths.CachePath, "jellytheme"), CancellationToken.None)));
+        var task = download.Value;
+        task.ContinueWith(_ => _previews.TryRemove(new KeyValuePair<string, Lazy<Task<string?>>>(key, download)), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        return task.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts caching previews in the background, so pressing play on a search result starts at once.
+    /// </summary>
+    /// <param name="videoIds">The search results.</param>
+    public void PrefetchPreviews(IEnumerable<VideoId> videoIds)
+    {
+        foreach (var id in videoIds)
+        {
+            CachePreviewAsync(id, CancellationToken.None).ContinueWith(
+                t => _logger.LogDebug(t.Exception, "Prefetching preview {VideoId} failed", id),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+        }
+    }
 
     /// <summary>
     /// Saves the audio of a YouTube video the user picked as the theme for <paramref name="item"/>.

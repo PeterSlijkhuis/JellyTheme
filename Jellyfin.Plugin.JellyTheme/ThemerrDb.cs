@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -37,6 +38,26 @@ public static class ThemerrDb
         response.EnsureSuccessStatusCode();
         var entry = await response.Content.ReadFromJsonAsync<Entry>(cancellationToken).ConfigureAwait(false);
         return string.IsNullOrEmpty(entry?.YouTubeThemeUrl) ? null : entry.YouTubeThemeUrl;
+    }
+
+    /// <summary>
+    /// Link to ThemerrDB's "submit a theme" form on GitHub, pre-filled with the item and the picked video,
+    /// so everyone else gets this theme automatically.
+    /// </summary>
+    /// <param name="isMovie">True for a movie, false for a TV show.</param>
+    /// <param name="name">Item name.</param>
+    /// <param name="year">Production year, if known.</param>
+    /// <param name="tmdbId">TMDB id; ThemerrDB keys everything on it.</param>
+    /// <param name="videoId">YouTube video id.</param>
+    /// <returns>The form link.</returns>
+    public static string SubmitUrl(bool isMovie, string name, int? year, string tmdbId, string videoId)
+    {
+        var title = $"[{(isMovie ? "MOVIE" : "TV SHOW")}]: {name}{(year is null ? string.Empty : $" ({year})")}";
+        var database = $"https://www.themoviedb.org/{(isMovie ? "movie" : "tv")}/{tmdbId}";
+        return "https://github.com/LizardByte/ThemerrDB/issues/new?assignees=&labels=request-theme&template=theme.yml"
+               + "&title=" + Uri.EscapeDataString(title)
+               + "&database_url=" + Uri.EscapeDataString(database)
+               + "&youtube_theme_url=" + Uri.EscapeDataString("https://www.youtube.com/watch?v=" + videoId);
     }
 
     private sealed record Entry([property: JsonPropertyName("youtube_theme_url")] string? YouTubeThemeUrl);
