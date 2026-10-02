@@ -1,8 +1,12 @@
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using YoutubeExplode;
+using YoutubeExplode.Common;
+using YoutubeExplode.Search;
 using YoutubeExplode.Videos.Streams;
 
 namespace Jellyfin.Plugin.JellyTheme;
@@ -13,26 +17,49 @@ namespace Jellyfin.Plugin.JellyTheme;
 public static class YouTubeAudio
 {
     /// <summary>
+    /// Opens the best AAC audio track of <paramref name="url"/>.
+    /// </summary>
+    /// <param name="http">Http client.</param>
+    /// <param name="url">YouTube video link or id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The audio stream (mp4/AAC), or null if the video has none.</returns>
+    public static async Task<Stream?> OpenAsync(HttpClient http, string url, CancellationToken cancellationToken)
+    {
+        var youtube = new YoutubeClient(http);
+        var manifest = await youtube.Videos.Streams.GetManifestAsync(url, cancellationToken).ConfigureAwait(false);
+        var audio = manifest.GetAudioOnlyStreams().Where(s => s.Container == Container.Mp4).TryGetWithHighestBitrate();
+        return audio is null ? null : await youtube.Videos.Streams.GetAsync(audio, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Downloads the best AAC audio of <paramref name="url"/> into <paramref name="folder"/> as theme.m4a.
     /// </summary>
     /// <param name="http">Http client.</param>
-    /// <param name="url">YouTube video link.</param>
+    /// <param name="url">YouTube video link or id.</param>
     /// <param name="folder">The movie or show folder.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if saved, false if the video has no AAC audio.</returns>
     public static async Task<bool> TrySaveAsync(HttpClient http, string url, string folder, CancellationToken cancellationToken)
     {
         // No re-encoding: YouTube's AAC track goes straight into theme.m4a, which Jellyfin plays as a theme song.
-        var youtube = new YoutubeClient(http);
-        var manifest = await youtube.Videos.Streams.GetManifestAsync(url, cancellationToken).ConfigureAwait(false);
-        var audio = manifest.GetAudioOnlyStreams().Where(s => s.Container == Container.Mp4).TryGetWithHighestBitrate();
-        if (audio is null)
+        await using var stream = await OpenAsync(http, url, cancellationToken).ConfigureAwait(false);
+        if (stream is null)
         {
             return false;
         }
 
-        await using var stream = await youtube.Videos.Streams.GetAsync(audio, cancellationToken).ConfigureAwait(false);
         await ThemeFiles.SaveAsync(stream, folder, "theme.m4a", cancellationToken).ConfigureAwait(false);
         return true;
     }
+
+    /// <summary>
+    /// Searches YouTube videos.
+    /// </summary>
+    /// <param name="http">Http client.</param>
+    /// <param name="query">Search text.</param>
+    /// <param name="count">Max results.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The top results.</returns>
+    public static async Task<IReadOnlyList<VideoSearchResult>> SearchAsync(HttpClient http, string query, int count, CancellationToken cancellationToken)
+        => await new YoutubeClient(http).Search.GetVideosAsync(query, cancellationToken).CollectAsync(count).ConfigureAwait(false);
 }

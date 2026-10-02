@@ -57,6 +57,22 @@ public sealed class ThemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void ItemsWithoutIdsStillShowAsMissing()
+    {
+        var noIds = new Movie { Path = Path.Combine(_dir, "Home Video.mkv") };
+        Assert.True(ThemeService.MissingTheme(noIds));
+        Assert.False(ThemeService.NeedsTheme(noIds));
+    }
+
+    [Fact]
+    public void PickerPageIsEmbedded()
+    {
+        var page = Assert.Single(new Plugin().GetPages());
+        using var html = typeof(Plugin).Assembly.GetManifestResourceStream(page.EmbeddedResourcePath);
+        Assert.NotNull(html);
+    }
+
+    [Fact]
     public async Task SavedThemeQueuesRefresh()
     {
         var (service, providers) = Service(HttpStatusCode.OK);

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JellyTheme</title>
+</head>
+<body>
+<div id="JellyThemePage" data-role="page" class="page type-interior pluginConfigurationPage" data-title="JellyTheme">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2>Missing themes</h2>
+            <p>Movies and shows that still have no theme after Plex and ThemerrDB. Search YouTube, listen to the results, and pick the right one. Nothing is saved until you press "Use this".</p>
+            <div style="display:flex;gap:1em;flex-wrap:wrap;margin-bottom:1em">
+                <input id="jtFilter" class="emby-input" type="search" placeholder="Filter by name" style="flex:1;min-width:12em">
+                <select id="jtType" class="emby-select">
+                    <option value="">Movies and shows</option>
+                    <option value="Movie">Movies</option>
+                    <option value="Series">Shows</option>
+                </select>
+            </div>
+            <p id="jtStatus">Loading...</p>
+            <div id="jtList"></div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        (function () {
+            const page = document.querySelector('#JellyThemePage');
+            const filter = page.querySelector('#jtFilter');
+            const type = page.querySelector('#jtType');
+            const status = page.querySelector('#jtStatus');
+            const list = page.querySelector('#jtList');
+            const PAGE_SIZE = 100;
+            let items = [];
+
+            // Builds elements with textContent only, so YouTube titles can never inject markup.
+            function el(tag, props, ...children) {
+                const e = document.createElement(tag);
+                Object.assign(e, props);
+                e.append(...children);
+                return e;
+            }
+
+            function api(path, params) {
+                return ApiClient.getUrl('JellyTheme/' + path, params);
+            }
+
+            function button(text) {
+                return el('button', { type: 'button', className: 'raised emby-button', textContent: text });
+            }
+
+            function duration(seconds) {
+                if (!seconds) {
+                    return '';
+                }
+                const s = Math.round(seconds);
+                return ' (' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ')';
+            }
+
+            function render() {
+                const text = filter.value.toLowerCase();
+                const shown = items.filter(i => (!type.value || i.Type === type.value) && i.Name.toLowerCase().includes(text));
+                status.textContent = shown.length + ' of ' + items.length + ' without a theme'
+                    + (shown.length > PAGE_SIZE ? ', showing the first ' + PAGE_SIZE + '. Use the filter to find others.' : '');
+                list.replaceChildren(...shown.slice(0, PAGE_SIZE).map(row));
+            }
+
+            function row(item) {
+                const label = item.Name + (item.Year ? ' (' + item.Year + ')' : '') + (item.Type === 'Movie' ? ', movie' : ', show');
+                const query = el('input', {
+                    type: 'search',
+                    className: 'emby-input',
+                    value: [item.Name, item.Year, item.Type === 'Movie' ? 'main theme' : 'opening theme'].filter(Boolean).join(' '),
+                    style: 'flex:1;min-width:12em'
+                });
+                const results = el('div');
+                const find = button('Find themes');
+                find.addEventListener('click', async () => {
+                    find.disabled = true;
+                    results.replaceChildren('Searching YouTube...');
+                    try {
+                        const found = await ApiClient.getJSON(api('Candidates/' + item.Id, { query: query.value }));
+                        results.replaceChildren(...(found.length ? found.map(c => candidate(item, c)) : ['No results. Try different search words.']));
+                    } catch (e) {
+                        results.replaceChildren('Search failed. YouTube may have changed; see the Jellyfin log.');
+                    }
+                    find.disabled = false;
+                });
+                return el('div', { style: 'padding:1em;margin-bottom:1em;border-radius:.3em;background:rgba(128,128,128,.12)' },
+                    el('h3', { textContent: label, style: 'margin-top:0' }),
+                    el('div', { style: 'display:flex;gap:.5em;flex-wrap:wrap' }, query, find),
+                    results);
+            }
+
+            function candidate(item, video) {
+                // <audio> can't send auth headers, so the token goes in the query string.
+                const audio = el('audio', { controls: true, preload: 'none', src: api('Preview/' + video.Id, { api_key: ApiClient.accessToken() }) });
+                const use = button('Use this');
+                use.addEventListener('click', async () => {
+                    use.disabled = true;
+                    use.textContent = 'Saving...';
+                    try {
+                        await ApiClient.ajax({ type: 'POST', url: api('Save/' + item.Id, { videoId: video.Id }) });
+                        items = items.filter(i => i.Id !== item.Id);
+                        render();
+                    } catch (e) {
+                        use.disabled = false;
+                        use.textContent = 'Save failed, try again';
+                    }
+                });
+                return el('div', { style: 'display:flex;align-items:center;gap:1em;flex-wrap:wrap;margin-top:.75em' },
+                    el('span', { textContent: video.Title + ', ' + video.Author + duration(video.Duration), style: 'flex:1;min-width:15em' }),
+                    audio,
+                    use);
+            }
+
+            filter.addEventListener('input', render);
+            type.addEventListener('change', render);
+            page.addEventListener('pageshow', async () => {
+                status.textContent = 'Loading...';
+                try {
+                    items = await ApiClient.getJSON(api('Missing'));
+                    render();
+                } catch (e) {
+                    status.textContent = 'Could not load the list. Only administrators can use this page.';
+                }
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

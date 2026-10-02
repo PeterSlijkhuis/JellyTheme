@@ -54,17 +54,24 @@ public class ThemeService
     };
 
     /// <summary>
+    /// Whether <paramref name="item"/> can hold a theme and has none yet.
+    /// </summary>
+    /// <param name="item">Library item.</param>
+    /// <returns>True if the theme is missing.</returns>
+    public static bool MissingTheme(BaseItem item)
+    {
+        var folder = ThemeFolder(item);
+        return !string.IsNullOrEmpty(folder) && Directory.Exists(folder) && !ThemeFiles.HasTheme(folder);
+    }
+
+    /// <summary>
     /// Whether <paramref name="item"/> has no theme yet and an id some source can look up.
     /// </summary>
     /// <param name="item">Library item.</param>
     /// <returns>True if worth looking up.</returns>
     public static bool NeedsTheme(BaseItem item)
-    {
-        var folder = ThemeFolder(item);
-        return !string.IsNullOrEmpty(folder) && Directory.Exists(folder)
-               && (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
-               && !ThemeFiles.HasTheme(folder);
-    }
+        => (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
+           && MissingTheme(item);
 
     /// <summary>
     /// Saves a theme for <paramref name="item"/> and queues a refresh so it plays right away.
@@ -107,7 +114,30 @@ public class ThemeService
         }
 
         _logger.LogInformation("Saved {Source} theme for {Name}", source, item.Name);
-        _providerManager.QueueRefresh(item.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
+        QueueRefresh(item);
         return true;
     }
+
+    /// <summary>
+    /// Saves the audio of a YouTube video the user picked as the theme for <paramref name="item"/>.
+    /// </summary>
+    /// <param name="item">The movie or series.</param>
+    /// <param name="videoId">YouTube video id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if saved, false if the item can't take a theme or the video has no usable audio.</returns>
+    public async Task<bool> SaveYouTubeAsync(BaseItem item, string videoId, CancellationToken cancellationToken)
+    {
+        if (!MissingTheme(item)
+            || !await YouTubeAudio.TrySaveAsync(_httpClientFactory.CreateClient(), videoId, ThemeFolder(item)!, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        _logger.LogInformation("Saved picked YouTube theme {VideoId} for {Name}", videoId, item.Name);
+        QueueRefresh(item);
+        return true;
+    }
+
+    private void QueueRefresh(BaseItem item)
+        => _providerManager.QueueRefresh(item.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
 }
