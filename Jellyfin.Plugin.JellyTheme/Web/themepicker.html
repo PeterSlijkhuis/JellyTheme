@@ -19,7 +19,7 @@
         #JellyThemePage .jt-title a:hover { text-decoration: underline; }
         #JellyThemePage .jt-row { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; }
         #JellyThemePage .jt-search { margin-top: .6em; }
-        #JellyThemePage .jt-search input { flex: 1; min-width: 12em; }
+        #JellyThemePage .jt-search input, #JellyThemePage .jt-message input { flex: 1; min-width: 12em; }
         #JellyThemePage .jt-result { display: flex; gap: .75em; align-items: center; padding: .5em 0; border-top: 1px solid rgba(128, 128, 128, .2); }
         #JellyThemePage .jt-result:first-child { margin-top: .6em; }
         #JellyThemePage .jt-result.jt-playing { background: rgba(0, 164, 220, .12); }
@@ -29,6 +29,7 @@
         #JellyThemePage .jt-play { min-width: 6.5em; margin: 0; }
         #JellyThemePage .jt-use { margin: 0; }
         #JellyThemePage .jt-message { margin: .6em 0 0; }
+        #JellyThemePage .jt-message a { color: #00a4dc; }
         #JellyThemePage .jt-keywords { margin-top: .4em; font-size: .9em; }
         #JellyThemePage .jt-keywords .emby-button { margin: 0; padding: .2em .8em; border-radius: 1em; font-size: .9em; }
         @media (max-width: 40em) {
@@ -291,10 +292,37 @@
             }
 
             // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
+            // GitHub sometimes opens the form without our values (the GitHub mobile app, or after signing in),
+            // so show them ready to copy into the two fields.
+            function formValues(submitUrl) {
+                const params = new URL(submitUrl).searchParams;
+                const field = (name, value) => {
+                    const input = el('input', { type: 'text', className: 'emby-input', value, readOnly: true });
+                    const copy = button('Copy');
+                    copy.addEventListener('click', async () => {
+                        try {
+                            await navigator.clipboard.writeText(value);
+                        } catch (e) {
+                            // No clipboard API over plain http; the old way still works there.
+                            input.select();
+                            document.execCommand('copy');
+                        }
+                        copy.textContent = 'Copied';
+                    });
+                    input.addEventListener('focus', () => input.select());
+                    return el('div', { className: 'jt-message' }, el('div', { className: 'jt-muted', textContent: name }), el('div', { className: 'jt-row' }, input, copy));
+                };
+                return el('div', {},
+                    el('p', { className: 'jt-message jt-muted', textContent: 'Form opened empty? Paste these into the two fields, then press Create.' }),
+                    field('Database URL', params.get('database_url')),
+                    field('YouTube Theme Song Video URL', params.get('youtube_theme_url')));
+            }
+
             function done(item, body, submitUrl, seconds) {
                 const close = button('Done');
                 close.addEventListener('click', () => body.parentElement.remove());
                 const actions = el('div', { className: 'jt-row' });
+                let extra = '';
                 const children = [
                     el('h3', { className: 'jt-title', textContent: label(item) }),
                     el('p', { className: 'jt-message', textContent: 'Saved. This theme now plays for ' + label(item) + '.' })
@@ -311,12 +339,13 @@
                     }
                     const submit = el('a', { href: submitUrl, target: '_blank', rel: 'noopener', className: 'raised button-submit emby-button', textContent: 'Submit to ThemerrDB', style: 'text-decoration:none' });
                     actions.append(submit, close);
+                    extra = formValues(submitUrl);
                 } else {
                     children.push(el('p', { className: 'jt-message jt-muted', textContent: 'This item has no TMDB id, so it cannot be submitted to ThemerrDB.' }));
                     actions.append(close);
                 }
                 actions.style.marginTop = '.6em';
-                body.replaceChildren(...children, actions);
+                body.replaceChildren(...children, actions, extra);
                 status.textContent = needed(items.length);
             }
 
