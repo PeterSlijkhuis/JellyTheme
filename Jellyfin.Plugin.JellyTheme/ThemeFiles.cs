@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -21,7 +22,7 @@ public static class ThemeFiles
 
     /// <summary>
     /// Writes <paramref name="source"/> to <paramref name="folder"/>/<paramref name="fileName"/>.
-    /// Goes through a hidden temp file so a failed download never leaves a broken theme behind.
+    /// Goes through a hidden, uniquely named temp file so a failed or concurrent download never leaves a broken theme behind.
     /// </summary>
     /// <param name="source">Audio stream.</param>
     /// <param name="folder">The movie or show folder.</param>
@@ -30,7 +31,7 @@ public static class ThemeFiles
     /// <returns>A task.</returns>
     public static async Task SaveAsync(Stream source, string folder, string fileName, CancellationToken cancellationToken)
     {
-        var temp = Path.Combine(folder, ".jellytheme.part");
+        var temp = Path.Combine(folder, $".jellytheme-{Guid.NewGuid():N}.part");
         try
         {
             await using (var file = File.Create(temp))

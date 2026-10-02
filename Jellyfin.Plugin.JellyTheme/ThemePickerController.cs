@@ -97,15 +97,16 @@ public class ThemePickerController : ControllerBase
     [HttpGet("Preview/{videoId}")]
     public async Task<ActionResult> Preview(string videoId, CancellationToken cancellationToken)
     {
-        if (VideoId.TryParse(videoId) is null)
+        if (VideoId.TryParse(videoId) is not { } id)
         {
             return BadRequest();
         }
 
         try
         {
-            var stream = await YouTubeAudio.OpenAsync(_httpClientFactory.CreateClient(), videoId, cancellationToken).ConfigureAwait(false);
-            return stream is null ? NotFound() : File(stream, "audio/mp4");
+            // Served from a cached file with range support: Safari and iOS refuse to play audio without it.
+            var path = await _themes.CachePreviewAsync(id, cancellationToken).ConfigureAwait(false);
+            return path is null ? NotFound() : PhysicalFile(path, "audio/mp4", enableRangeProcessing: true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -125,14 +126,14 @@ public class ThemePickerController : ControllerBase
     public async Task<ActionResult> Save(Guid itemId, [FromQuery] string videoId, CancellationToken cancellationToken)
     {
         var item = _libraryManager.GetItemById(itemId);
-        if (item is null || VideoId.TryParse(videoId) is null)
+        if (item is null || VideoId.TryParse(videoId) is not { } id)
         {
             return BadRequest();
         }
 
         try
         {
-            return await _themes.SaveYouTubeAsync(item, videoId, cancellationToken).ConfigureAwait(false) ? NoContent() : Conflict();
+            return await _themes.SaveYouTubeAsync(item, id, cancellationToken).ConfigureAwait(false) ? NoContent() : Conflict();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
