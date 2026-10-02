@@ -48,6 +48,7 @@ public class ThemeTask : IScheduledTask
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        _themes.CleanPreviewCache();
         var series = _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie],

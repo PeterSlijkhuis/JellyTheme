@@ -131,6 +131,8 @@ public class ThemeService
         return true;
     }
 
+    private string PreviewCache => Path.Combine(_applicationPaths.CachePath, "jellytheme");
+
     /// <summary>
     /// Downloads (once) the audio of a YouTube video for previewing.
     /// </summary>
@@ -143,11 +145,16 @@ public class ThemeService
         // and it keeps going when one of them gives up, so the next click finds it done.
         var key = videoId.Value;
         var download = _previews.GetOrAdd(key, _ => new Lazy<Task<string?>>(() =>
-            YouTubeAudio.CacheAsync(_httpClientFactory.CreateClient(), videoId, Path.Combine(_applicationPaths.CachePath, "jellytheme"), CancellationToken.None)));
+            YouTubeAudio.CacheAsync(_httpClientFactory.CreateClient(), videoId, PreviewCache, CancellationToken.None)));
         var task = download.Value;
         task.ContinueWith(_ => _previews.TryRemove(new KeyValuePair<string, Lazy<Task<string?>>>(key, download)), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         return task.WaitAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Removes old previews. Runs with the daily task, so the cache empties even when nobody searches.
+    /// </summary>
+    public void CleanPreviewCache() => YouTubeAudio.CleanCache(PreviewCache);
 
     /// <summary>
     /// Starts caching previews in the background, so pressing play on a search result starts at once.
@@ -183,6 +190,16 @@ public class ThemeService
         await using (var audio = File.OpenRead(cached))
         {
             await ThemeFiles.SaveAsync(audio, ThemeFolder(item)!, "theme.m4a", cancellationToken).ConfigureAwait(false);
+        }
+
+        // The theme now lives in the item's folder; the cached copy is no longer needed.
+        try
+        {
+            File.Delete(cached);
+        }
+        catch (IOException)
+        {
+            // Still being streamed to a preview; the cache cleanup removes it later.
         }
 
         _logger.LogInformation("Saved picked YouTube theme {VideoId} for {Name}", videoId, item.Name);

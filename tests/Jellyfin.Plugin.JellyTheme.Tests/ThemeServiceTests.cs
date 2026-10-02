@@ -68,6 +68,21 @@ public sealed class ThemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void CacheCleanupRemovesOnlyOldPreviews()
+    {
+        var old = Path.Combine(_dir, "old.m4a");
+        var fresh = Path.Combine(_dir, "fresh.m4a");
+        File.WriteAllText(old, "x");
+        File.WriteAllText(fresh, "x");
+        File.SetLastWriteTimeUtc(old, DateTime.UtcNow - YouTubeAudio.CacheLifetime - TimeSpan.FromMinutes(1));
+
+        YouTubeAudio.CleanCache(_dir);
+
+        Assert.False(File.Exists(old));
+        Assert.True(File.Exists(fresh));
+    }
+
+    [Fact]
     public void CollectionsArePickedByHandOnly()
     {
         var collection = new BoxSet { Path = _dir };
