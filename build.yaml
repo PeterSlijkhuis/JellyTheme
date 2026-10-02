@@ -1,0 +1,11 @@
+name: "JellyTheme"
+guid: "a0373070-26ce-4f00-92ce-d760f5edc5cb"
+version: "0.1.0.0"
+targetAbi: "12.1.0.0"
+framework: "net10.0"
+owner: "PeterSlijkhuis"
+overview: "Theme songs for every movie and TV show"
+description: "Downloads theme songs for your Jellyfin library. Starts with Plex's TV theme server; YouTube sources come next."
+category: "Metadata"
+artifacts:
+  - "Jellyfin.Plugin.JellyTheme.dll"
