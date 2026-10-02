@@ -1,14 +1,16 @@
 <p align="center">
-  <img src="assets/banner.png" alt="JellyTheme: theme songs for every movie and TV show" width="100%">
+  <img src="assets/demo.gif" alt="JellyTheme in 20 seconds: themes found automatically, the rest picked in a few clicks" width="100%">
+  <br>
+  <a href="assets/demo.mp4">Watch with sound (MP4, 1 MB)</a>
 </p>
 
 # JellyTheme
 
-**A Jellyfin plugin that adds theme songs to your movies and TV shows, with as little work from you as possible.**
+**A Jellyfin plugin that adds theme songs to your movies, TV shows and collections, with as little work from you as possible.**
 
 Theme songs are the music that plays while you browse a movie or show in Jellyfin. Jellyfin plays them when it finds a `theme.mp3` (or similar) file in the item's folder, but it doesn't download them for you. JellyTheme does.
 
-It fills themes automatically from two trusted sources, keeps doing that for everything you add later, and gives you a quick picker page for whatever is left.
+It fills themes automatically from two trusted sources, keeps doing that for everything you add later, and gives you a quick picker page for whatever is left: ranked YouTube results, one-click previews, and an option to share a confirmed pick with ThemerrDB so everyone gets it.
 
 ## Contents
 
@@ -238,7 +240,8 @@ Two things to know:
 | `manifest.json` | The repository file Jellyfin reads. Updated by the workflow; don't edit versions by hand. |
 | `.github/workflows/release.yml` | The Release workflow. |
 | `.github/scripts/release.py` | Version bumping, YoutubeExplode check, and manifest updates. |
-| `assets/banner.png` | The catalog and README image. Its source is `assets/banner.html`. |
+| `assets/banner.png` | The catalog image. Its source is `assets/banner.html`. |
+| `assets/demo.gif`, `assets/demo.mp4` | The README demo (silent GIF, and the MP4 with sound). |
 
 ## Development
 
