@@ -1,4 +1,3 @@
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -11,20 +10,8 @@ namespace Jellyfin.Plugin.JellyTheme;
 /// </summary>
 public static class PlexThemeDownloader
 {
-    /// <summary>File name Jellyfin picks up as a theme song.</summary>
-    public const string ThemeFileName = "theme.mp3";
-
     /// <summary>
-    /// Whether the show folder already has a theme (theme.mp3 or a theme-music folder).
-    /// </summary>
-    /// <param name="seriesPath">The series folder.</param>
-    /// <returns>True if a theme exists.</returns>
-    public static bool HasTheme(string seriesPath)
-        => File.Exists(Path.Combine(seriesPath, ThemeFileName))
-           || Directory.Exists(Path.Combine(seriesPath, "theme-music"));
-
-    /// <summary>
-    /// Downloads the Plex theme for <paramref name="tvdbId"/> into <paramref name="seriesPath"/>.
+    /// Downloads the Plex theme for <paramref name="tvdbId"/> into <paramref name="seriesPath"/> as theme.mp3.
     /// </summary>
     /// <param name="http">Http client.</param>
     /// <param name="tvdbId">TVDB series id.</param>
@@ -45,24 +32,8 @@ public static class PlexThemeDownloader
         }
 
         response.EnsureSuccessStatusCode();
-
-        // Write to a temp file first so a failed download never leaves a truncated theme.mp3.
-        var target = Path.Combine(seriesPath, ThemeFileName);
-        var temp = target + ".part";
-        try
-        {
-            await using (var file = File.Create(temp))
-            {
-                await response.Content.CopyToAsync(file, cancellationToken).ConfigureAwait(false);
-            }
-
-            File.Move(temp, target);
-        }
-        finally
-        {
-            File.Delete(temp);
-        }
-
+        await using var body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await ThemeFiles.SaveAsync(body, seriesPath, "theme.mp3", cancellationToken).ConfigureAwait(false);
         return true;
     }
 }

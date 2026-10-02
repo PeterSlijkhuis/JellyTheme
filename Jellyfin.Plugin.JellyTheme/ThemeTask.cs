@@ -12,21 +12,21 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.JellyTheme;
 
 /// <summary>
-/// Scheduled task that adds Plex theme songs to TV shows that have none.
+/// Scheduled task that adds theme songs to movies and TV shows that have none.
 /// </summary>
-public class PlexThemeTask : IScheduledTask
+public class ThemeTask : IScheduledTask
 {
     private readonly ILibraryManager _libraryManager;
-    private readonly PlexThemeService _themes;
-    private readonly ILogger<PlexThemeTask> _logger;
+    private readonly ThemeService _themes;
+    private readonly ILogger<ThemeTask> _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="PlexThemeTask"/> class.
+    /// Initializes a new instance of the <see cref="ThemeTask"/> class.
     /// </summary>
     /// <param name="libraryManager">Library manager.</param>
-    /// <param name="themes">Plex theme service.</param>
+    /// <param name="themes">Theme service.</param>
     /// <param name="logger">Logger.</param>
-    public PlexThemeTask(ILibraryManager libraryManager, PlexThemeService themes, ILogger<PlexThemeTask> logger)
+    public ThemeTask(ILibraryManager libraryManager, ThemeService themes, ILogger<ThemeTask> logger)
     {
         _libraryManager = libraryManager;
         _themes = themes;
@@ -34,13 +34,13 @@ public class PlexThemeTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Download TV theme songs from Plex";
+    public string Name => "Download theme songs";
 
     /// <inheritdoc />
-    public string Key => "JellyThemePlexTv";
+    public string Key => "JellyThemeDownload";
 
     /// <inheritdoc />
-    public string Description => "Saves theme.mp3 for every TV show that has a TVDB id and no theme yet. New shows are also handled as soon as their metadata arrives.";
+    public string Description => "Saves a theme for every movie and TV show that has none yet, from Plex and ThemerrDB. New items are also handled as soon as their metadata arrives.";
 
     /// <inheritdoc />
     public string Category => "JellyTheme";
@@ -50,10 +50,10 @@ public class PlexThemeTask : IScheduledTask
     {
         var series = _libraryManager.GetItemList(new InternalItemsQuery
         {
-            IncludeItemTypes = [BaseItemKind.Series],
+            IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie],
             IsVirtualItem = false,
             Recursive = true,
-        }).Where(PlexThemeService.NeedsTheme).ToList();
+        }).Where(ThemeService.NeedsTheme).ToList();
 
         int saved = 0;
         for (int i = 0; i < series.Count; i++)
@@ -67,7 +67,7 @@ public class PlexThemeTask : IScheduledTask
             progress.Report(100.0 * (i + 1) / series.Count);
         }
 
-        _logger.LogInformation("Saved {Saved} Plex themes, checked {Count} shows without one", saved, series.Count);
+        _logger.LogInformation("Saved {Saved} themes, checked {Count} items without one", saved, series.Count);
     }
 
     /// <inheritdoc />
