@@ -68,6 +68,18 @@ public sealed class ThemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void ReplacedThemesAreKeptAndCanBeRestored()
+    {
+        File.WriteAllText(Path.Combine(_dir, "theme.mp3"), "old");
+        ThemeFiles.SetAside(_dir);
+        Assert.False(ThemeFiles.HasTheme(_dir));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(_dir, ".jellytheme-replaced-theme.mp3")));
+
+        ThemeFiles.Restore(_dir);
+        Assert.Equal("old", File.ReadAllText(Path.Combine(_dir, "theme.mp3")));
+    }
+
+    [Fact]
     public void CacheCleanupRemovesOnlyOldPreviews()
     {
         var old = Path.Combine(_dir, "old.m4a");

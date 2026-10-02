@@ -115,7 +115,11 @@ After that there is nothing you have to do. New movies and shows get themes on t
 
 **Collections.** Collections get a theme from ThemerrDB automatically when it has one (by TMDB collection id), and otherwise show up here. A collection's theme is saved in Jellyfin's own collection folder (inside the Jellyfin data folder, `data/collections/<name> [boxset]`), not in your media folders, and plays when you open the collection. Because it lives in the Jellyfin data folder, back that folder up if you want to keep collection themes when reinstalling Jellyfin.
 
-Picked the wrong one? Delete `theme.m4a` from the item's folder. The item shows up in the list again on the next page load.
+**Replacing a theme.** Set **Items** to **All, to replace a theme**. Items that already have one say "has a theme", and their button reads **Replace with this**. The old `theme.*` file is not deleted: it is renamed to a hidden `.jellytheme-replaced-theme.<ext>` file in the same folder, which Jellyfin ignores. Rename it back to undo. A `theme-music` folder is left alone, so if an item has one, Jellyfin keeps playing those songs too.
+
+**Opening one item directly.** `<your server>/web/#/configurationpage?name=JellyTheme&item=<item id>` opens the page on just that movie, show or collection. The item id is the `id=` part of the item's own page address. Jellyfin has no way for plugins to add an entry to an item's three-dots menu, so this link is the shortcut.
+
+Picked the wrong one? Pick again with **Items** set to **All**, or delete `theme.m4a` from the item's folder.
 
 ## Updates
 
