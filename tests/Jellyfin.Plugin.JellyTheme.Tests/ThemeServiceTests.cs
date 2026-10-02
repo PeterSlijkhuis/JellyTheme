@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
@@ -64,6 +65,31 @@ public sealed class ThemeServiceTests : IDisposable
         var noIds = new Movie { Path = Path.Combine(_dir, "Home Video.mkv") };
         Assert.True(ThemeService.MissingTheme(noIds));
         Assert.False(ThemeService.NeedsTheme(noIds));
+    }
+
+    [Fact]
+    public void CacheCleanupRemovesOnlyOldPreviews()
+    {
+        var old = Path.Combine(_dir, "old.m4a");
+        var fresh = Path.Combine(_dir, "fresh.m4a");
+        File.WriteAllText(old, "x");
+        File.WriteAllText(fresh, "x");
+        File.SetLastWriteTimeUtc(old, DateTime.UtcNow - YouTubeAudio.CacheLifetime - TimeSpan.FromMinutes(1));
+
+        YouTubeAudio.CleanCache(_dir);
+
+        Assert.False(File.Exists(old));
+        Assert.True(File.Exists(fresh));
+    }
+
+    [Fact]
+    public void CollectionsArePickedByHandOnly()
+    {
+        var collection = new BoxSet { Path = _dir };
+        collection.SetProviderId(MetadataProvider.Tmdb, "2344");
+        Assert.Equal(_dir, ThemeService.ThemeFolder(collection));
+        Assert.True(ThemeService.MissingTheme(collection));
+        Assert.False(ThemeService.NeedsTheme(collection));
     }
 
     [Fact]

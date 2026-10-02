@@ -14,7 +14,7 @@ It fills themes automatically from two trusted sources, keeps doing that for eve
 
 - [What it does](#what-it-does)
 - [What it does not do](#what-it-does-not-do)
-- [Requirements](#requirements)
+- [Prerequisites](#prerequisites)
 - [Install from the Jellyfin catalog (recommended)](#install-from-the-jellyfin-catalog-recommended)
 - [First run](#first-run)
 - [Using the Missing themes page](#using-the-missing-themes-page)
@@ -37,7 +37,7 @@ JellyTheme tries three sources, in this order, and stops at the first one that h
 |---|---|---|---|---|---|
 | 1 | **Plex** TV theme server | TV shows | TVDB id | `theme.mp3` | Yes |
 | 2 | **ThemerrDB** (community-picked YouTube links) | Movies and TV shows | TMDB id | `theme.m4a` | Yes |
-| 3 | **Missing themes page** (you pick from YouTube) | Anything left | Nothing | `theme.m4a` | No, you choose |
+| 3 | **Missing themes page** (you pick from YouTube) | Anything left, including collections | Nothing | `theme.m4a` | No, you choose |
 
 The automatic sources run:
 
@@ -52,18 +52,28 @@ The ids (TVDB, TMDB) come from Jellyfin's normal metadata. If your movies and sh
 
 - **It never replaces a theme you already have.** Any `theme.*` file or `theme-music` folder means the item is skipped. To replace a theme, delete the file first.
 - **No themes for movies that share a folder.** Jellyfin plays a folder's theme for every movie in it, so a theme there would play for all of them. Give each movie its own folder (for example `Movies/The Matrix (1999)/The Matrix (1999).mkv`) to get one.
-- **No themes for episodes, seasons, music, books or other library types.** Only movies and shows.
+- **No automatic themes for collections.** Neither Plex nor ThemerrDB has collection themes, so collections only get one when you pick it on the Missing themes page.
+- **No themes for episodes, seasons, music, books or other library types.** Only movies, shows and collections.
 - **No automatic YouTube guessing.** YouTube search only happens on the Missing themes page, and only you decide what gets saved. That keeps wrong songs out of your library.
 - **No theme videos (backdrops).** Audio only.
 - **No settings to configure.** It works out of the box.
 
-## Requirements
+## Prerequisites
 
-- **Jellyfin 12.1 or newer.** JellyTheme is built for Jellyfin 12.1 and will not load on 10.x servers.
-- **Write access to your media folders** for the Jellyfin server. Themes are saved next to your movies and shows.
-- **Internet access** from the server to `tvthemes.plexapp.com`, `app.lizardbyte.dev`, `youtube.com` and `github.com`.
+Check these before installing. Most servers already meet all of them.
 
-Nothing else. There is nothing to install besides the plugin itself: everything it needs ships inside the plugin.
+| What | Why | How to check or fix |
+|---|---|---|
+| **Jellyfin 12.1 or newer** | JellyTheme is built for Jellyfin 12.1 (.NET 10). It does not load on 10.x servers. | The version shows under your server name in the dashboard menu. |
+| **TMDb metadata** on your movie and show libraries | ThemerrDB looks themes up by TMDB id, and the "Submit to ThemerrDB" button needs it too. | TMDb is built into Jellyfin. Open **Dashboard > Libraries**, edit each movie and show library, and make sure **TheMovieDb** is ticked under the metadata downloaders. |
+| **TVDB ids** on your shows (recommended) | The Plex theme source looks TV themes up by TVDB id. Without it, shows can still get a theme from ThemerrDB. | Install the **TheTVDB** plugin from the official catalog: **Dashboard > Plugins**, **Available**, search "TheTVDB", install, restart, then tick it as a metadata downloader on your show libraries. TMDb often fills in TVDB ids for shows as well, so check a show's **Edit metadata > External IDs** first. |
+| **Matched items** | Items with no ids get no automatic theme. | If a movie or show has no poster or description, use **Identify** on it. Unmatched items still show up on the Missing themes page. |
+| **Write access to your media folders** | Themes are saved next to your movies and shows. | Docker: don't mount media with `:ro`. Other installs: the Jellyfin user needs write permission. |
+| **Internet access** from the server | To reach `tvthemes.plexapp.com`, `app.lizardbyte.dev` and `youtube.com`. | Firewalls or VPN containers can block these; the log shows the failed address. |
+| **Theme songs turned on** for your user | Jellyfin only plays themes when this per-user setting is on. | User settings > **Display** > **Theme songs**. |
+| **A free GitHub account** (optional) | Only for submitting your picks to ThemerrDB. | [github.com/signup](https://github.com/signup). |
+
+Nothing else needs installing: everything JellyTheme uses ships inside the plugin.
 
 ## Install from the Jellyfin catalog (recommended)
 
@@ -94,10 +104,13 @@ After that there is nothing you have to do. New movies and shows get themes on t
 ## Using the Missing themes page
 
 1. Open **Dashboard**, then **JellyTheme** in the menu. Only administrators can open it.
-2. The page lists every movie and show that can hold a theme but has none. Narrow it down with the **name filter** or the **Movies / Shows** selector. It shows 100 items at a time, so use the filter to reach the rest.
-3. Press **Find themes** on an item. The search box is pre-filled with the title, the year, and "main theme" (movies) or "opening theme" (shows). If the results are wrong, edit the search and press **Find themes** again. Adding "soundtrack", "intro" or the composer's name often helps.
-4. Press play on a result to listen. The first play of each result takes a few seconds, because your Jellyfin server downloads the audio first. After that it plays and seeks instantly, and "Use this" reuses the download. Videos longer than about 30 minutes of audio are skipped.
-5. Press **Use this** on the right one. JellyTheme saves its audio as `theme.m4a` in that item's folder, the item disappears from the list, and the theme plays from then on.
+2. The page lists every movie, show and collection that can hold a theme but has none, with its poster. Narrow it down with the **name filter** or the **Show** selector (movies, shows or collections), and change the order with **Sort by**: name, recently added, or year. It shows 50 items at a time; press **Show more** for the next 50.
+3. Press **Find themes** (or Enter in the search box). The search is pre-filled, for example "The Matrix 1999 main theme" for a movie or "Friends theme song" for a show. JellyTheme fetches the top 20 YouTube results and shows the 5 most theme-like: official "Topic" channels and titles with "theme", "intro" or "soundtrack" rank higher; covers, reactions, trailers, 10-hour loops and very short clips rank lower. The top one is marked **Best match**. If the results are wrong, edit the search and press **Search again**. Adding the composer, "opening" or "soundtrack" often helps.
+4. Press **Play** on a result to listen, and **Stop** to stop. Only one preview plays at a time: starting another stops the current one. The server starts downloading all results as soon as the search finishes, so by the time you press play it is usually ready. A result you play before its download is done shows **Loading...** for a few seconds. Videos longer than about 30 minutes of audio are skipped.
+5. Press **Use this** on the right one. JellyTheme saves its audio as `theme.m4a` in that item's folder, and the theme plays from then on. Press **Done** to remove the card.
+6. **Share it (optional).** For movies and shows, the card then offers **Submit to ThemerrDB**. Only press it when you are sure the theme is right. It opens a pre-filled request on GitHub with the item's TMDB link and the YouTube link; you just press **Create**. Once ThemerrDB's reviewers accept it, every Themerr and JellyTheme user gets that theme automatically.
+
+**Collections.** A collection's theme is saved in Jellyfin's own collection folder (inside the Jellyfin data folder, `data/collections/<name> [boxset]`), not in your media folders, and plays when you open the collection. Because it lives in the Jellyfin data folder, back that folder up if you want to keep collection themes when reinstalling Jellyfin.
 
 Picked the wrong one? Delete `theme.m4a` from the item's folder. The item shows up in the list again on the next page load.
 
@@ -123,10 +136,11 @@ If that doesn't happen, stop Jellyfin, delete the `JellyTheme_1.0.0.0` folder fr
 - **YouTube's terms.** Downloading audio from YouTube may be against YouTube's Terms of Service, and theme songs are copyrighted. Use JellyTheme only for your own personal library, and decide for yourself whether you're comfortable with it. Plex themes don't involve YouTube.
 - **YouTube changes break downloads for a while.** When YouTube changes something, ThemerrDB downloads and the Missing themes page stop working until a fixed YoutubeExplode is released and the automatic update above picks it up. That usually takes days, not hours. Plex themes keep working the whole time. Watch the log for "Could not save theme" warnings.
 - **Read-only media folders.** If your media is mounted read-only (for example a Docker volume with `:ro`), or the Jellyfin user can't write to it, saving fails and the log shows a permission error. Give Jellyfin write access to those folders.
-- **What gets written.** JellyTheme only ever adds `theme.mp3` or `theme.m4a` to a movie or show folder. While downloading it briefly writes a hidden `.jellytheme-<random>.part` file next to it, and removes it when done. It never changes, moves or deletes anything else in your media folders. Preview downloads are kept in Jellyfin's cache folder (`cache/jellytheme`) for a day.
+- **What gets written.** JellyTheme only ever adds `theme.mp3` or `theme.m4a` to a movie or show folder. While downloading it briefly writes a hidden `.jellytheme-<random>.part` file next to it, and removes it when done. It never changes, moves or deletes anything else in your media folders. Preview downloads are kept in Jellyfin's cache folder (`cache/jellytheme`) for at most an hour, and the one you pick is removed from the cache as soon as it is saved.
 - **The Plex theme server is unofficial.** Plex doesn't document it for outside use, so it could change or disappear without notice.
 - **Your access token appears in preview links.** A browser `<audio>` player can't send login headers, so preview links include your Jellyfin access token, the same way Jellyfin's own web player streams media. It can show up in reverse-proxy logs.
-- **Nobody checks what you pick.** ThemerrDB entries are reviewed by its community; your picks on the Missing themes page are not.
+- **Nobody checks what you pick.** ThemerrDB entries are reviewed by its community; your picks on the Missing themes page are not. Only submit a pick to ThemerrDB when you have listened to it and are sure.
+- **Searching downloads a little audio.** Each search pre-downloads the 5 results (usually 1 to 5 MB each) so previews start quickly. Unused downloads are removed from the cache after an hour (at the latest by the next daily task run).
 
 ## Troubleshooting
 
@@ -139,6 +153,8 @@ If that doesn't happen, stop Jellyfin, delete the `JellyTheme_1.0.0.0` folder fr
 | A show gets no theme | It has no TVDB or TMDB id (use **Identify** on it in Jellyfin), or neither Plex nor ThemerrDB has one. Use the Missing themes page. |
 | A movie gets no theme | It shares a folder with other movies, has no TMDB id, or ThemerrDB has no entry. |
 | A movie or show isn't on the Missing themes page | It already has a `theme.*` file or `theme-music` folder, or it's a movie in a shared folder. |
+| "This item has no TMDB id" after saving | TMDb isn't enabled for that library, or the item isn't matched. See [Prerequisites](#prerequisites). The theme itself is saved fine. |
+| Collection theme doesn't play | Open the collection itself (not the Collections overview) and check **Theme songs** is on. |
 | "Search failed" or previews won't play | YouTube changed something, or the server can't reach YouTube. Wait for the automatic update, and check the log. Very long videos are skipped on purpose. |
 | Preview won't play on one browser only | That browser can't play AAC audio (some Linux browser builds lack it). "Use this" still works; the theme plays in Jellyfin's apps. |
 | Theme saved but doesn't play | Check that **Theme songs** is on in your user's Display settings. Otherwise wait a minute for the refresh, or use **Refresh metadata** on the item. |
@@ -160,6 +176,12 @@ Usually 1 to 5 MB per theme.
 
 **Can I use it on Jellyfin 10.10 or 10.11?**
 No. It needs Jellyfin 12.1 or newer.
+
+**Can collections have a theme?**
+Yes, pick one on the Missing themes page. It plays when you open the collection. Collections never get one automatically, because Plex and ThemerrDB have none.
+
+**What does "Submit to ThemerrDB" send?**
+Nothing by itself. It opens a GitHub page with the form already filled in (title, TMDB link, YouTube link). Nothing is sent until you press Create on GitHub, signed in with your own account.
 
 **How do I stop it downloading for a specific item?**
 Put any file named `theme.something` in that folder (even an empty one), or a `theme-music` folder. JellyTheme then leaves it alone.
@@ -255,7 +277,7 @@ JellyTheme combines ideas from two existing plugins and builds on open data and 
 
 - Plex, ThemerrDB and manual picking in one plugin, tried in that order, so each item gets the most reliable theme available.
 - Themes for new items as soon as their metadata arrives, plus an immediate refresh so they play right away.
-- The Missing themes page: a filtered list of everything without a theme, with several YouTube results to listen to side by side before saving.
+- The Missing themes page: a sortable, filtered list of everything without a theme (collections included), with ranked YouTube results that are pre-downloaded so previews start quickly, and a one-click way to share a confirmed pick with ThemerrDB.
 - Automatic releases when YoutubeExplode ships a fix, so YouTube breakage heals itself.
 - Safe file handling: downloads go to a temporary file first, so a dropped connection never leaves a broken theme. Existing themes are never touched.
 

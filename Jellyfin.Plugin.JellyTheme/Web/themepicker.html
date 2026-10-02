@@ -6,20 +6,63 @@
 </head>
 <body>
 <div id="JellyThemePage" data-role="page" class="page type-interior pluginConfigurationPage" data-title="JellyTheme">
+    <style>
+        #JellyThemePage .jt-muted { opacity: .7; }
+        #JellyThemePage .jt-toolbar { display: flex; gap: 1em; flex-wrap: wrap; align-items: center; margin: 1em 0; }
+        #JellyThemePage .jt-toolbar > .inputContainer, #JellyThemePage .jt-toolbar > .selectContainer { margin: 0; }
+        #JellyThemePage .jt-grow { flex: 1; min-width: 12em; }
+        #JellyThemePage .jt-card { display: flex; gap: 1em; padding: 1em; margin-bottom: 1em; border-radius: .4em; background: rgba(128, 128, 128, .12); }
+        #JellyThemePage .jt-poster { width: 4.5em; height: 6.75em; flex: none; border-radius: .3em; object-fit: cover; background: rgba(128, 128, 128, .2); }
+        #JellyThemePage .jt-body { flex: 1; min-width: 0; }
+        #JellyThemePage .jt-title { margin: 0 0 .1em; font-size: 1.15em; }
+        #JellyThemePage .jt-title a { color: inherit; text-decoration: none; }
+        #JellyThemePage .jt-title a:hover { text-decoration: underline; }
+        #JellyThemePage .jt-row { display: flex; gap: .5em; flex-wrap: wrap; align-items: center; }
+        #JellyThemePage .jt-search { margin-top: .6em; }
+        #JellyThemePage .jt-search input { flex: 1; min-width: 12em; }
+        #JellyThemePage .jt-result { display: flex; gap: .75em; align-items: center; padding: .5em 0; border-top: 1px solid rgba(128, 128, 128, .2); }
+        #JellyThemePage .jt-result:first-child { margin-top: .6em; }
+        #JellyThemePage .jt-result.jt-playing { background: rgba(0, 164, 220, .12); }
+        #JellyThemePage .jt-info { flex: 1; min-width: 0; }
+        #JellyThemePage .jt-info > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #JellyThemePage .jt-badge { display: inline-block; margin-left: .5em; padding: 0 .5em; border-radius: 1em; font-size: .8em; background: #00a4dc; color: #fff; vertical-align: middle; }
+        #JellyThemePage .jt-play { min-width: 6.5em; margin: 0; }
+        #JellyThemePage .jt-use { margin: 0; }
+        #JellyThemePage .jt-message { margin: .6em 0 0; }
+        @media (max-width: 40em) {
+            #JellyThemePage .jt-poster { display: none; }
+            #JellyThemePage .jt-result { flex-wrap: wrap; }
+            #JellyThemePage .jt-info { flex-basis: calc(100% - 8em); }
+        }
+    </style>
     <div data-role="content">
         <div class="content-primary">
-            <h2>Missing themes</h2>
-            <p>Movies and shows that still have no theme after Plex and ThemerrDB. Search YouTube, listen to the results, and pick the right one. Nothing is saved until you press "Use this".</p>
-            <div style="display:flex;gap:1em;flex-wrap:wrap;margin-bottom:1em">
-                <input id="jtFilter" class="emby-input" type="search" placeholder="Filter by name" style="flex:1;min-width:12em">
-                <select id="jtType" class="emby-select">
-                    <option value="">Movies and shows</option>
-                    <option value="Movie">Movies</option>
-                    <option value="Series">Shows</option>
-                </select>
+            <h2 class="sectionTitle">Missing themes</h2>
+            <p class="jt-muted">These movies, shows and collections have no theme yet, and none was found on Plex or ThemerrDB. Press <b>Find themes</b>, play the results, and press <b>Use this</b> on the right one. Nothing is saved until you do.</p>
+            <div class="jt-toolbar">
+                <div class="inputContainer jt-grow">
+                    <input is="emby-input" id="jtFilter" type="search" label="Filter by name" autocomplete="off">
+                </div>
+                <div class="selectContainer">
+                    <select is="emby-select" id="jtType" label="Show">
+                        <option value="">Everything</option>
+                        <option value="Movie">Movies</option>
+                        <option value="Series">Shows</option>
+                        <option value="Collection">Collections</option>
+                    </select>
+                </div>
+                <div class="selectContainer">
+                    <select is="emby-select" id="jtSort" label="Sort by">
+                        <option value="name">Name</option>
+                        <option value="added">Recently added</option>
+                        <option value="newest">Year, newest first</option>
+                        <option value="oldest">Year, oldest first</option>
+                    </select>
+                </div>
             </div>
-            <p id="jtStatus">Loading...</p>
+            <p id="jtStatus" class="jt-muted">Loading...</p>
             <div id="jtList"></div>
+            <button is="emby-button" id="jtMore" type="button" class="raised emby-button" style="display:none">Show more</button>
         </div>
     </div>
     <script type="text/javascript">
@@ -27,10 +70,17 @@
             const page = document.querySelector('#JellyThemePage');
             const filter = page.querySelector('#jtFilter');
             const type = page.querySelector('#jtType');
+            const sort = page.querySelector('#jtSort');
             const status = page.querySelector('#jtStatus');
             const list = page.querySelector('#jtList');
-            const PAGE_SIZE = 100;
+            const more = page.querySelector('#jtMore');
+            const PAGE_SIZE = 50;
             let items = [];
+            let limit = PAGE_SIZE;
+
+            // One player for the whole page, so only one preview can ever play at a time.
+            const player = new Audio();
+            let current = null; // { button, row, note } of the result that owns the player
 
             // Builds elements with textContent only, so YouTube titles can never inject markup.
             function el(tag, props, ...children) {
@@ -44,83 +94,218 @@
                 return ApiClient.getUrl('JellyTheme/' + path, params);
             }
 
-            function button(text) {
-                return el('button', { type: 'button', className: 'raised emby-button', textContent: text });
+            function button(text, className) {
+                const b = el('button', { type: 'button', className: 'raised emby-button ' + (className || ''), textContent: text });
+                b.setAttribute('is', 'emby-button');
+                return b;
             }
 
-            function duration(seconds) {
-                if (!seconds) {
-                    return '';
-                }
-                const s = Math.round(seconds);
-                return ' (' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ')';
+            function clock(seconds) {
+                const s = Math.round(seconds || 0);
+                return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
             }
+
+            function needed(count) {
+                return count + (count === 1 ? ' item needs' : ' items need') + ' a theme';
+            }
+
+            function label(item) {
+                // Unmatched items are often named "Title (2001)" already; don't show the year twice.
+                const year = item.Year && item.Type !== 'Collection' && !item.Name.endsWith('(' + item.Year + ')') ? ' (' + item.Year + ')' : '';
+                return item.Name + year;
+            }
+
+            function stop() {
+                player.pause();
+                player.removeAttribute('src');
+                player.load();
+                if (current) {
+                    current.button.textContent = 'Play';
+                    current.row.classList.remove('jt-playing');
+                    current = null;
+                }
+            }
+
+            player.addEventListener('waiting', () => current && (current.button.textContent = 'Loading...'));
+            player.addEventListener('playing', () => current && (current.button.textContent = 'Stop'));
+            player.addEventListener('timeupdate', () => current && !player.paused && (current.button.textContent = 'Stop ' + clock(player.currentTime)));
+            player.addEventListener('ended', stop);
+            player.addEventListener('error', () => {
+                if (current && player.getAttribute('src')) {
+                    current.note.textContent = 'This preview could not play. The video may be over 30 minutes long or unavailable.';
+                    stop();
+                }
+            });
+
+            // The server sends them sorted by name; the other orders keep name order on ties.
+            const orders = {
+                name: () => 0,
+                added: (a, b) => (b.Added || '').localeCompare(a.Added || ''),
+                newest: (a, b) => (b.Year || 0) - (a.Year || 0),
+                oldest: (a, b) => (a.Year || 9999) - (b.Year || 9999)
+            };
+
+            function visible() {
+                const text = filter.value.toLowerCase();
+                return items.filter(i => (!type.value || i.Type === type.value) && i.Name.toLowerCase().includes(text))
+                    .sort(orders[sort.value]);
+            }
+
+            const kinds = { Movie: 'Movie', Series: 'Show', Collection: 'Collection' };
 
             function render() {
-                const text = filter.value.toLowerCase();
-                const shown = items.filter(i => (!type.value || i.Type === type.value) && i.Name.toLowerCase().includes(text));
-                status.textContent = shown.length + ' of ' + items.length + ' without a theme'
-                    + (shown.length > PAGE_SIZE ? ', showing the first ' + PAGE_SIZE + '. Use the filter to find others.' : '');
-                list.replaceChildren(...shown.slice(0, PAGE_SIZE).map(row));
+                stop();
+                const shown = visible();
+                if (!items.length) {
+                    status.textContent = 'Everything has a theme. New movies and shows are handled automatically when they are added.';
+                } else if (!shown.length) {
+                    status.textContent = 'Nothing matches this filter. ' + needed(items.length) + ' in total.';
+                } else {
+                    status.textContent = shown.length === items.length
+                        ? needed(items.length)
+                        : shown.length + ' of ' + items.length + ' items match';
+                }
+                list.replaceChildren(...shown.slice(0, limit).map(card));
+                updateMore(shown.length);
             }
 
-            function row(item) {
-                const label = item.Name + (item.Year ? ' (' + item.Year + ')' : '') + (item.Type === 'Movie' ? ', movie' : ', show');
-                const query = el('input', {
-                    type: 'search',
-                    className: 'emby-input',
-                    value: [item.Name, item.Year, item.Type === 'Movie' ? 'main theme' : 'opening theme'].filter(Boolean).join(' '),
-                    style: 'flex:1;min-width:12em'
+            function updateMore(total) {
+                // Not the hidden attribute: Jellyfin's button style overrides it.
+                more.style.display = total <= limit ? 'none' : '';
+                more.textContent = 'Show more (' + (total - limit) + ' left)';
+            }
+
+            function card(item) {
+                const poster = el('img', {
+                    className: 'jt-poster',
+                    alt: '',
+                    loading: 'lazy',
+                    src: ApiClient.getImageUrl(item.Id, { type: 'Primary', maxHeight: 200 })
                 });
+                poster.addEventListener('error', () => poster.replaceWith(el('div', { className: 'jt-poster' })));
+
+                const query = el('input', { type: 'search', className: 'emby-input', value: item.Query, title: 'YouTube search words' });
+                const find = button('Find themes', 'button-submit');
                 const results = el('div');
-                const find = button('Find themes');
-                find.addEventListener('click', async () => {
+                const body = el('div', { className: 'jt-body' },
+                    el('h3', { className: 'jt-title' }, el('a', { href: '#/details?id=' + item.Id, textContent: label(item) })),
+                    el('div', { className: 'jt-muted', textContent: kinds[item.Type] + (item.Type === 'Collection' ? ', plays on the collection page' : '') }),
+                    el('div', { className: 'jt-row jt-search' }, query, find),
+                    results);
+
+                async function search() {
                     find.disabled = true;
-                    results.replaceChildren('Searching YouTube...');
+                    find.textContent = 'Searching...';
+                    if (current && results.contains(current.row)) {
+                        stop();
+                    }
+                    results.replaceChildren(el('p', { className: 'jt-message jt-muted', textContent: 'Searching YouTube...' }));
                     try {
                         const found = await ApiClient.getJSON(api('Candidates/' + item.Id, { query: query.value }));
-                        results.replaceChildren(...(found.length ? found.map(c => candidate(item, c)) : ['No results. Try different search words.']));
+                        results.replaceChildren(...(found.length
+                            ? found.map((c, i) => result(item, c, i === 0, body))
+                            : [el('p', { className: 'jt-message', textContent: 'No results. Try other words, for example the composer or "opening".' })]));
                     } catch (e) {
-                        results.replaceChildren('Search failed. YouTube may have changed; see the Jellyfin log.');
+                        results.replaceChildren(el('p', { className: 'jt-message', textContent: 'Search failed. YouTube may be unreachable or changed; the Jellyfin log has details.' }));
                     }
                     find.disabled = false;
+                    find.textContent = 'Search again';
+                }
+
+                find.addEventListener('click', search);
+                query.addEventListener('keydown', e => {
+                    if (e.key === 'Enter') {
+                        search();
+                    }
                 });
-                return el('div', { style: 'padding:1em;margin-bottom:1em;border-radius:.3em;background:rgba(128,128,128,.12)' },
-                    el('h3', { textContent: label, style: 'margin-top:0' }),
-                    el('div', { style: 'display:flex;gap:.5em;flex-wrap:wrap' }, query, find),
-                    results);
+
+                return el('div', { className: 'jt-card' }, poster, body);
             }
 
-            function candidate(item, video) {
-                // <audio> can't send auth headers, so the token goes in the query string.
-                // Jellyfin 12 accepts it as ApiKey; the older api_key spelling is rejected with 401.
-                const audio = el('audio', { controls: true, preload: 'none', src: api('Preview/' + video.Id, { ApiKey: ApiClient.accessToken() }) });
-                const use = button('Use this');
-                const note = el('span', { style: 'flex-basis:100%;opacity:.7' });
-                audio.addEventListener('error', () => {
-                    note.textContent = 'Preview could not play. The video may be longer than 30 minutes or unavailable.';
+            function result(item, video, best, body) {
+                const play = button('Play', 'jt-play');
+                const use = button('Use this', 'jt-use');
+                const note = el('div', { className: 'jt-muted' });
+                const info = el('div', { className: 'jt-info' },
+                    el('div', { textContent: video.Title, title: video.Title }, ...(best ? [el('span', { className: 'jt-badge', textContent: 'Best match' })] : [])),
+                    el('div', { className: 'jt-muted', textContent: video.Author + (video.Duration ? ', ' + clock(video.Duration) : '') }),
+                    note);
+                const row = el('div', { className: 'jt-result' }, play, info, use);
+
+                play.addEventListener('click', () => {
+                    if (current && current.row === row) {
+                        stop();
+                        return;
+                    }
+                    stop();
+                    current = { button: play, row, note };
+                    note.textContent = '';
+                    row.classList.add('jt-playing');
+                    play.textContent = 'Loading...';
+                    // <audio> can't send auth headers, so the token goes in the query string.
+                    // Jellyfin 12 accepts it as ApiKey; the older api_key spelling is rejected with 401.
+                    player.src = api('Preview/' + video.Id, { ApiKey: ApiClient.accessToken() });
+                    player.play().catch(() => { });
                 });
+
                 use.addEventListener('click', async () => {
                     use.disabled = true;
                     use.textContent = 'Saving...';
                     try {
-                        await ApiClient.ajax({ type: 'POST', url: api('Save/' + item.Id, { videoId: video.Id }) });
+                        const saved = await ApiClient.ajax({ type: 'POST', url: api('Save/' + item.Id, { videoId: video.Id }), dataType: 'json' });
+                        stop();
                         items = items.filter(i => i.Id !== item.Id);
-                        render();
+                        done(item, body, saved && saved.SubmitUrl);
                     } catch (e) {
                         use.disabled = false;
                         use.textContent = 'Save failed, try again';
                     }
                 });
-                return el('div', { style: 'display:flex;align-items:center;gap:1em;flex-wrap:wrap;margin-top:.75em' },
-                    el('span', { textContent: video.Title + ', ' + video.Author + duration(video.Duration), style: 'flex:1;min-width:15em' }),
-                    audio,
-                    use,
-                    note);
+
+                return row;
             }
 
-            filter.addEventListener('input', render);
-            type.addEventListener('change', render);
+            // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
+            function done(item, body, submitUrl) {
+                const close = button('Done');
+                close.addEventListener('click', () => body.parentElement.remove());
+                const actions = el('div', { className: 'jt-row' });
+                const children = [
+                    el('h3', { className: 'jt-title', textContent: label(item) }),
+                    el('p', { className: 'jt-message', textContent: 'Saved. This theme now plays for ' + label(item) + '.' })
+                ];
+                if (item.Type === 'Collection') {
+                    children.push(el('p', { className: 'jt-message jt-muted', textContent: 'ThemerrDB has no collections, so there is nothing to submit.' }));
+                    actions.append(close);
+                } else if (submitUrl) {
+                    children.push(el('p', { className: 'jt-message jt-muted', textContent: 'Sure it is the right one? Submit it to ThemerrDB so every Themerr and JellyTheme user gets it automatically. This opens a pre-filled form on GitHub; you only press Create. It needs a free GitHub account.' }));
+                    const submit = el('a', { href: submitUrl, target: '_blank', rel: 'noopener', className: 'raised button-submit emby-button', textContent: 'Submit to ThemerrDB', style: 'text-decoration:none' });
+                    actions.append(submit, close);
+                } else {
+                    children.push(el('p', { className: 'jt-message jt-muted', textContent: 'This item has no TMDB id, so it cannot be submitted to ThemerrDB.' }));
+                    actions.append(close);
+                }
+                actions.style.marginTop = '.6em';
+                body.replaceChildren(...children, actions);
+                status.textContent = needed(items.length);
+            }
+
+            filter.addEventListener('input', () => {
+                limit = PAGE_SIZE;
+                render();
+            });
+            [type, sort].forEach(select => select.addEventListener('change', () => {
+                limit = PAGE_SIZE;
+                render();
+            }));
+            // Appends instead of re-rendering, so open search results stay put.
+            more.addEventListener('click', () => {
+                const shown = visible();
+                list.append(...shown.slice(limit, limit + PAGE_SIZE).map(card));
+                limit += PAGE_SIZE;
+                updateMore(shown.length);
+            });
+            page.addEventListener('pagehide', stop);
             page.addEventListener('pageshow', async () => {
                 status.textContent = 'Loading...';
                 try {

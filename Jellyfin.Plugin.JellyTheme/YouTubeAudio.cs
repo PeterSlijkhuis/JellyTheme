@@ -21,6 +21,11 @@ public static class YouTubeAudio
     private const double MaxMegaBytes = 30;
 
     /// <summary>
+    /// How long an unpicked preview stays cached: long enough to finish choosing, short enough to keep the cache small.
+    /// </summary>
+    public static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// Opens the best AAC audio track of <paramref name="url"/>.
     /// </summary>
     /// <param name="http">Http client.</param>
@@ -60,7 +65,7 @@ public static class YouTubeAudio
 
     /// <summary>
     /// Downloads a video's audio into <paramref name="cacheDir"/> once, so previews can seek and saving is instant.
-    /// Cached files older than a day are removed.
+    /// Cached files older than <see cref="CacheLifetime"/> are removed.
     /// </summary>
     /// <param name="http">Http client.</param>
     /// <param name="videoId">A validated YouTube video id (11 characters, safe as a file name).</param>
@@ -76,17 +81,7 @@ public static class YouTubeAudio
             return path;
         }
 
-        foreach (var old in new DirectoryInfo(cacheDir).EnumerateFiles().Where(f => f.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-1)))
-        {
-            try
-            {
-                old.Delete();
-            }
-            catch (IOException)
-            {
-                // In use by another preview; next time.
-            }
-        }
+        CleanCache(cacheDir);
 
         await using var stream = await OpenAsync(http, videoId, cancellationToken).ConfigureAwait(false);
         if (stream is null)
@@ -104,6 +99,30 @@ public static class YouTubeAudio
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Removes cached previews older than <see cref="CacheLifetime"/>, and leftover partial downloads.
+    /// </summary>
+    /// <param name="cacheDir">Cache folder.</param>
+    public static void CleanCache(string cacheDir)
+    {
+        if (!Directory.Exists(cacheDir))
+        {
+            return;
+        }
+
+        foreach (var old in new DirectoryInfo(cacheDir).EnumerateFiles().Where(f => f.LastWriteTimeUtc < DateTime.UtcNow - CacheLifetime))
+        {
+            try
+            {
+                old.Delete();
+            }
+            catch (IOException)
+            {
+                // In use by another preview; next time.
+            }
+        }
     }
 
     /// <summary>
