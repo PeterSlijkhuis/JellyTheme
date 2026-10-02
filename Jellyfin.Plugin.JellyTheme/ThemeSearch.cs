@@ -19,7 +19,7 @@ public static partial class ThemeSearch
         "reaction", "review", "trailer", "teaser", "explained", "breakdown", "analysis", "cover", "piano", "guitar", "violin",
         "drum", "tutorial", "lesson", "how to", "remix", "slowed", "reverb", "nightcore", "8d", "hour", "hours", "loop",
         "extended", "compilation", "ranking", "top 10", "every ", "parody", "karaoke", "instrumental cover", "fan made",
-        "fanmade", "ai ", "minecraft", "roblox", "meme", "shorts", "#shorts", "behind the scenes", "interview",
+        "fanmade", "ai ", "minecraft", "roblox", "meme", "shorts", "#shorts", "behind the scenes", "interview", "scene", "clip",
     ];
 
     /// <summary>
@@ -87,13 +87,15 @@ public static partial class ThemeSearch
             score -= 5;
         }
 
+        // Follows ThemerrDB's theme guidelines: 0:20 to 2:00 is best, over 5:00 is graded F.
         score += duration switch
         {
             null => -10, // live streams can't be downloaded
-            { TotalSeconds: < 25 } => -3,
-            { TotalMinutes: <= 8 } => 1,
+            { TotalSeconds: < 20 } => -3,
+            { TotalSeconds: <= 120 } => 2,
+            { TotalSeconds: <= 300 } => 1,
             { TotalMinutes: > 12 } => -4,
-            _ => 0,
+            _ => -1,
         };
 
         return score;

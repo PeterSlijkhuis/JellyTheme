@@ -150,16 +150,33 @@ public class ThemePickerController : ControllerBase
                 return Conflict();
             }
 
-            // Items without a TMDB id can't be submitted: ThemerrDB keys everything on it. It has no collections.
-            var submitUrl = item is Movie or Series && item.TryGetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Tmdb, out var tmdbId)
-                ? ThemerrDb.SubmitUrl(item is Movie, ThemeSearch.CleanName(item.Name), item.ProductionYear, tmdbId, id.Value)
-                : null;
+            // Items without a TMDB id can't be submitted: ThemerrDB keys everything on it.
+            string? submitUrl = null;
+            if (item.TryGetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Tmdb, out var tmdbId))
+            {
+                var kind = ThemeService.ThemerrKind(item);
+                submitUrl = ThemerrDb.SubmitUrl(kind, ThemeSearch.CleanName(item.Name), item is BoxSet ? null : item.ProductionYear, tmdbId, id.Value, await CurrentThemerrThemeAsync(kind, tmdbId, cancellationToken).ConfigureAwait(false));
+            }
+
             return Ok(new { SubmitUrl = submitUrl });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Saving YouTube theme {VideoId} for {Name} failed", videoId, item.Name);
             return StatusCode(StatusCodes.Status502BadGateway);
+        }
+    }
+
+    // ThemerrDB asks for a reason when a submission replaces its current theme. Having one here means it failed to download.
+    private async Task<string?> CurrentThemerrThemeAsync(ThemerrDb.Kind kind, string tmdbId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ThemerrDb.GetYouTubeUrlAsync(_httpClientFactory.CreateClient(), kind, tmdbId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 

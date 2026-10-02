@@ -20,7 +20,7 @@ namespace Jellyfin.Plugin.JellyTheme;
 
 /// <summary>
 /// Finds and saves a theme for one movie or show, then tells Jellyfin to pick it up.
-/// Sources in order: Plex (TV, by TVDB id), then ThemerrDB (movies and TV, by TMDB id).
+/// Sources in order: Plex (TV, by TVDB id), then ThemerrDB (movies, TV and collections, by TMDB id).
 /// </summary>
 public class ThemeService
 {
@@ -85,10 +85,8 @@ public class ThemeService
     /// </summary>
     /// <param name="item">Library item.</param>
     /// <returns>True if worth looking up.</returns>
-    /// <remarks>Collections are skipped: their TMDB id is a collection id, which ThemerrDB doesn't have, so they are picked by hand.</remarks>
     public static bool NeedsTheme(BaseItem item)
-        => item is not BoxSet
-           && (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
+        => (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
            && MissingTheme(item);
 
     /// <summary>
@@ -115,7 +113,7 @@ public class ThemeService
             source = "Plex";
         }
         else if (item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbId)
-                 && await TryAsync(item, "ThemerrDB", async () => await ThemerrDb.GetYouTubeUrlAsync(http, item is Movie, tmdbId, cancellationToken).ConfigureAwait(false) is { } url
+                 && await TryAsync(item, "ThemerrDB", async () => await ThemerrDb.GetYouTubeUrlAsync(http, ThemerrKind(item), tmdbId, cancellationToken).ConfigureAwait(false) is { } url
                                                               && await YouTubeAudio.TrySaveAsync(http, url, folder, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false))
         {
             source = "ThemerrDB";
@@ -130,6 +128,14 @@ public class ThemeService
         QueueRefresh(item);
         return true;
     }
+
+    /// <summary>
+    /// Which ThemerrDB section an item's TMDB id points into. A collection's TMDB id is its TMDB collection id.
+    /// </summary>
+    /// <param name="item">Movie, show or collection.</param>
+    /// <returns>The section.</returns>
+    public static ThemerrDb.Kind ThemerrKind(BaseItem item)
+        => item switch { Series => ThemerrDb.Kind.Show, BoxSet => ThemerrDb.Kind.Collection, _ => ThemerrDb.Kind.Movie };
 
     private string PreviewCache => Path.Combine(_applicationPaths.CachePath, "jellytheme");
 

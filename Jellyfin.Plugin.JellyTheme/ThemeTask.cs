@@ -40,7 +40,7 @@ public class ThemeTask : IScheduledTask
     public string Key => "JellyThemeDownload";
 
     /// <inheritdoc />
-    public string Description => "Saves a theme for every movie and TV show that has none yet, from Plex and ThemerrDB. New items are also handled as soon as their metadata arrives.";
+    public string Description => "Saves a theme for every movie, TV show and collection that has none yet, from Plex and ThemerrDB. New items are also handled as soon as their metadata arrives.";
 
     /// <inheritdoc />
     public string Category => "JellyTheme";
@@ -51,7 +51,7 @@ public class ThemeTask : IScheduledTask
         _themes.CleanPreviewCache();
         var series = _libraryManager.GetItemList(new InternalItemsQuery
         {
-            IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie],
+            IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie, BaseItemKind.BoxSet],
             IsVirtualItem = false,
             Recursive = true,
         }).Where(ThemeService.NeedsTheme).ToList();

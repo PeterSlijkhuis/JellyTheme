@@ -83,13 +83,16 @@ public sealed class ThemeServiceTests : IDisposable
     }
 
     [Fact]
-    public void CollectionsArePickedByHandOnly()
+    public void CollectionsLookUpByTheirTmdbCollectionId()
     {
         var collection = new BoxSet { Path = _dir };
-        collection.SetProviderId(MetadataProvider.Tmdb, "2344");
         Assert.Equal(_dir, ThemeService.ThemeFolder(collection));
         Assert.True(ThemeService.MissingTheme(collection));
         Assert.False(ThemeService.NeedsTheme(collection));
+
+        collection.SetProviderId(MetadataProvider.Tmdb, "2344");
+        Assert.True(ThemeService.NeedsTheme(collection));
+        Assert.Equal(ThemerrDb.Kind.Collection, ThemeService.ThemerrKind(collection));
     }
 
     [Fact]
