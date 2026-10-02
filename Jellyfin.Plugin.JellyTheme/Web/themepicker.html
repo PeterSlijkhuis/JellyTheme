@@ -93,8 +93,13 @@
 
             function candidate(item, video) {
                 // <audio> can't send auth headers, so the token goes in the query string.
-                const audio = el('audio', { controls: true, preload: 'none', src: api('Preview/' + video.Id, { api_key: ApiClient.accessToken() }) });
+                // Jellyfin 12 accepts it as ApiKey; the older api_key spelling is rejected with 401.
+                const audio = el('audio', { controls: true, preload: 'none', src: api('Preview/' + video.Id, { ApiKey: ApiClient.accessToken() }) });
                 const use = button('Use this');
+                const note = el('span', { style: 'flex-basis:100%;opacity:.7' });
+                audio.addEventListener('error', () => {
+                    note.textContent = 'Preview could not play. The video may be longer than 30 minutes or unavailable.';
+                });
                 use.addEventListener('click', async () => {
                     use.disabled = true;
                     use.textContent = 'Saving...';
@@ -110,7 +115,8 @@
                 return el('div', { style: 'display:flex;align-items:center;gap:1em;flex-wrap:wrap;margin-top:.75em' },
                     el('span', { textContent: video.Title + ', ' + video.Author + duration(video.Duration), style: 'flex:1;min-width:15em' }),
                     audio,
-                    use);
+                    use,
+                    note);
             }
 
             filter.addEventListener('input', render);

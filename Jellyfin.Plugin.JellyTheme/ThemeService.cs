@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
@@ -11,6 +12,7 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging;
 using YoutubeExplode.Exceptions;
+using YoutubeExplode.Videos;
 
 namespace Jellyfin.Plugin.JellyTheme;
 
@@ -23,6 +25,7 @@ public class ThemeService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IProviderManager _providerManager;
     private readonly IFileSystem _fileSystem;
+    private readonly IApplicationPaths _applicationPaths;
     private readonly ILogger<ThemeService> _logger;
 
     /// <summary>
@@ -31,12 +34,14 @@ public class ThemeService
     /// <param name="httpClientFactory">Http client factory.</param>
     /// <param name="providerManager">Provider manager.</param>
     /// <param name="fileSystem">File system.</param>
+    /// <param name="applicationPaths">Application paths, for the preview cache.</param>
     /// <param name="logger">Logger.</param>
-    public ThemeService(IHttpClientFactory httpClientFactory, IProviderManager providerManager, IFileSystem fileSystem, ILogger<ThemeService> logger)
+    public ThemeService(IHttpClientFactory httpClientFactory, IProviderManager providerManager, IFileSystem fileSystem, IApplicationPaths applicationPaths, ILogger<ThemeService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _providerManager = providerManager;
         _fileSystem = fileSystem;
+        _applicationPaths = applicationPaths;
         _logger = logger;
     }
 
@@ -61,7 +66,15 @@ public class ThemeService
     public static bool MissingTheme(BaseItem item)
     {
         var folder = ThemeFolder(item);
-        return !string.IsNullOrEmpty(folder) && Directory.Exists(folder) && !ThemeFiles.HasTheme(folder);
+        try
+        {
+            return !string.IsNullOrEmpty(folder) && Directory.Exists(folder) && !ThemeFiles.HasTheme(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Runs inside Jellyfin's ItemUpdated event; an unreadable folder must never throw into it.
+            return false;
+        }
     }
 
     /// <summary>
@@ -89,23 +102,18 @@ public class ThemeService
         var folder = ThemeFolder(item)!;
         var http = _httpClientFactory.CreateClient();
         string? source = null;
-        try
+
+        // Each source gets its own try, so a Plex outage still falls through to ThemerrDB.
+        if (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out var tvdbId)
+            && await TryAsync(item, "Plex", () => PlexThemeDownloader.TryDownloadAsync(http, tvdbId, folder, cancellationToken)).ConfigureAwait(false))
         {
-            if (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out var tvdbId)
-                && await PlexThemeDownloader.TryDownloadAsync(http, tvdbId, folder, cancellationToken).ConfigureAwait(false))
-            {
-                source = "Plex";
-            }
-            else if (item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbId)
-                     && await ThemerrDb.GetYouTubeUrlAsync(http, item is Movie, tmdbId, cancellationToken).ConfigureAwait(false) is { } url
-                     && await YouTubeAudio.TrySaveAsync(http, url, folder, cancellationToken).ConfigureAwait(false))
-            {
-                source = "ThemerrDB";
-            }
+            source = "Plex";
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or YoutubeExplodeException or System.Text.Json.JsonException)
+        else if (item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbId)
+                 && await TryAsync(item, "ThemerrDB", async () => await ThemerrDb.GetYouTubeUrlAsync(http, item is Movie, tmdbId, cancellationToken).ConfigureAwait(false) is { } url
+                                                              && await YouTubeAudio.TrySaveAsync(http, url, folder, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false))
         {
-            _logger.LogWarning(ex, "Could not save theme for {Name}", item.Name);
+            source = "ThemerrDB";
         }
 
         if (source is null)
@@ -119,23 +127,50 @@ public class ThemeService
     }
 
     /// <summary>
+    /// Downloads (once) the audio of a YouTube video for previewing.
+    /// </summary>
+    /// <param name="videoId">YouTube video id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Path of the cached audio, or null if the video has no usable audio.</returns>
+    public Task<string?> CachePreviewAsync(VideoId videoId, CancellationToken cancellationToken)
+        => YouTubeAudio.CacheAsync(_httpClientFactory.CreateClient(), videoId, Path.Combine(_applicationPaths.CachePath, "jellytheme"), cancellationToken);
+
+    /// <summary>
     /// Saves the audio of a YouTube video the user picked as the theme for <paramref name="item"/>.
+    /// Reuses the preview download when there is one.
     /// </summary>
     /// <param name="item">The movie or series.</param>
     /// <param name="videoId">YouTube video id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if saved, false if the item can't take a theme or the video has no usable audio.</returns>
-    public async Task<bool> SaveYouTubeAsync(BaseItem item, string videoId, CancellationToken cancellationToken)
+    public async Task<bool> SaveYouTubeAsync(BaseItem item, VideoId videoId, CancellationToken cancellationToken)
     {
-        if (!MissingTheme(item)
-            || !await YouTubeAudio.TrySaveAsync(_httpClientFactory.CreateClient(), videoId, ThemeFolder(item)!, cancellationToken).ConfigureAwait(false))
+        if (!MissingTheme(item) || await CachePreviewAsync(videoId, cancellationToken).ConfigureAwait(false) is not { } cached)
         {
             return false;
+        }
+
+        await using (var audio = File.OpenRead(cached))
+        {
+            await ThemeFiles.SaveAsync(audio, ThemeFolder(item)!, "theme.m4a", cancellationToken).ConfigureAwait(false);
         }
 
         _logger.LogInformation("Saved picked YouTube theme {VideoId} for {Name}", videoId, item.Name);
         QueueRefresh(item);
         return true;
+    }
+
+    private async Task<bool> TryAsync(BaseItem item, string source, Func<Task<bool>> save)
+    {
+        try
+        {
+            return await save().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or YoutubeExplodeException or System.Text.Json.JsonException)
+        {
+            _logger.LogWarning(ex, "Could not save {Source} theme for {Name}", source, item.Name);
+            return false;
+        }
     }
 
     private void QueueRefresh(BaseItem item)

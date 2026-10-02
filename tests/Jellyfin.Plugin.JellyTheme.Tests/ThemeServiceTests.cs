@@ -4,11 +4,13 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Serialization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -65,9 +67,18 @@ public sealed class ThemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void PluginInfoLoads()
+    {
+        // Regression: the non-generic BasePlugin left Version and AssemblyFilePath null, so this threw and broke GET /Plugins.
+        var info = NewPlugin().GetPluginInfo();
+        Assert.Equal("JellyTheme", info.Name);
+        Assert.NotNull(info.Version);
+    }
+
+    [Fact]
     public void PickerPageIsEmbedded()
     {
-        var page = Assert.Single(new Plugin().GetPages());
+        var page = Assert.Single(NewPlugin().GetPages());
         using var html = typeof(Plugin).Assembly.GetManifestResourceStream(page.EmbeddedResourcePath);
         Assert.NotNull(html);
     }
@@ -94,6 +105,32 @@ public sealed class ThemeServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task PlexOutageStillTriesThemerrDb()
+    {
+        var hosts = new System.Collections.Generic.List<string>();
+        var http = new Mock<IHttpClientFactory>();
+        http.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient(new Handler(req =>
+        {
+            hosts.Add(req.RequestUri!.Host);
+            return req.RequestUri.Host == "tvthemes.plexapp.com" ? HttpStatusCode.InternalServerError : HttpStatusCode.NotFound;
+        })));
+        var service = new ThemeService(http.Object, Mock.Of<IProviderManager>(), Mock.Of<IFileSystem>(), Mock.Of<IApplicationPaths>(), NullLogger<ThemeService>.Instance);
+        var show = Show();
+        show.SetProviderId(MetadataProvider.Tmdb, "1396");
+
+        Assert.False(await service.TrySaveAsync(show, CancellationToken.None));
+        Assert.Equal(new[] { "tvthemes.plexapp.com", "app.lizardbyte.dev" }, hosts);
+    }
+
+    private Plugin NewPlugin()
+    {
+        var paths = new Mock<IApplicationPaths>();
+        paths.Setup(p => p.PluginsPath).Returns(_dir);
+        paths.Setup(p => p.PluginConfigurationsPath).Returns(_dir);
+        return new Plugin(paths.Object, Mock.Of<IXmlSerializer>());
+    }
+
     private Series Show()
     {
         var show = new Series { Id = Guid.NewGuid(), Path = _dir };
@@ -106,12 +143,17 @@ public sealed class ThemeServiceTests : IDisposable
         var http = new Mock<IHttpClientFactory>();
         http.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient(new Handler(status)));
         var providers = new Mock<IProviderManager>();
-        return (new ThemeService(http.Object, providers.Object, Mock.Of<IFileSystem>(), NullLogger<ThemeService>.Instance), providers);
+        return (new ThemeService(http.Object, providers.Object, Mock.Of<IFileSystem>(), Mock.Of<IApplicationPaths>(), NullLogger<ThemeService>.Instance), providers);
     }
 
-    private sealed class Handler(HttpStatusCode status) : HttpMessageHandler
+    private sealed class Handler(Func<HttpRequestMessage, HttpStatusCode> status) : HttpMessageHandler
     {
+        public Handler(HttpStatusCode status)
+            : this(_ => status)
+        {
+        }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(new HttpResponseMessage(status) { Content = new ByteArrayContent([1]) });
+            => Task.FromResult(new HttpResponseMessage(status(request)) { Content = new ByteArrayContent([1]) });
     }
 }

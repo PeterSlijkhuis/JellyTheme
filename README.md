@@ -69,15 +69,15 @@ Nothing else. There is nothing to install besides the plugin itself: everything 
 
 You add the JellyTheme repository to Jellyfin once. After that, installing and updating works like any official plugin.
 
-1. **Open the plugin repositories.** In Jellyfin, go to **Dashboard > Plugins** and open **Repositories**. In some Jellyfin versions this is the gear (settings) icon on the **Catalog** page, called **Manage repositories**.
-2. **Add the repository.** Press **+** (Add) and fill in:
+1. **Open the plugin repositories.** In Jellyfin, go to **Dashboard > Plugins** and press **Manage Repositories** (top right).
+2. **Add the repository.** Press **New Repository** and fill in:
    - **Name:** `JellyTheme`
    - **URL:** `https://raw.githubusercontent.com/PeterSlijkhuis/JellyTheme/main/manifest.json`
 
    Save.
-3. **Install the plugin.** Go to **Dashboard > Plugins > Catalog**. Find **JellyTheme** (under Metadata) and press **Install**.
+3. **Install the plugin.** Go back to **Dashboard > Plugins** and pick the **Available** filter. Find **JellyTheme** and press **Install**.
 4. **Restart Jellyfin.** Dashboard > **Restart** (or restart the container or service). Jellyfin only loads new plugins after a restart.
-5. **Check it loaded.** Go to **Dashboard > Plugins > My Plugins**. JellyTheme should show as **Active**.
+5. **Check it loaded.** Go to **Dashboard > Plugins** and pick the **Installed** filter. JellyTheme should show as **Active**, and **JellyTheme** appears in the dashboard menu under Plugins.
 
 That's it. Continue with [First run](#first-run).
 
@@ -96,7 +96,7 @@ After that there is nothing you have to do. New movies and shows get themes on t
 1. Open **Dashboard**, then **JellyTheme** in the menu. Only administrators can open it.
 2. The page lists every movie and show that can hold a theme but has none. Narrow it down with the **name filter** or the **Movies / Shows** selector. It shows 100 items at a time, so use the filter to reach the rest.
 3. Press **Find themes** on an item. The search box is pre-filled with the title, the year, and "main theme" (movies) or "opening theme" (shows). If the results are wrong, edit the search and press **Find themes** again. Adding "soundtrack", "intro" or the composer's name often helps.
-4. Press play on a result to listen. Previews stream through your Jellyfin server, so they work on any device where you can open the dashboard.
+4. Press play on a result to listen. The first play of each result takes a few seconds, because your Jellyfin server downloads the audio first. After that it plays and seeks instantly, and "Use this" reuses the download. Videos longer than about 30 minutes of audio are skipped.
 5. Press **Use this** on the right one. JellyTheme saves its audio as `theme.m4a` in that item's folder, the item disappears from the list, and the theme plays from then on.
 
 Picked the wrong one? Delete `theme.m4a` from the item's folder. The item shows up in the list again on the next page load.
@@ -108,14 +108,22 @@ JellyTheme updates itself with almost no work from anyone:
 - **New YouTube fixes arrive on their own.** Most of the time YouTube downloads break, it is because YouTube changed something and the YoutubeExplode library needed a fix. Every day, JellyTheme's repository checks for a new YoutubeExplode version. When there is one, it builds, tests and publishes a new JellyTheme release automatically.
 - **Jellyfin installs updates on its own.** Jellyfin's built-in **Update Plugins** scheduled task checks the repository and installs new versions. A restart is needed before the new version is active, as with any plugin update.
 
-You can also update by hand: **Dashboard > Plugins > My Plugins > JellyTheme**, then pick the newest version.
+You can also update by hand: **Dashboard > Plugins**, open **JellyTheme**, and install the newest version.
+
+### Upgrading from 1.0.0.0
+
+Version 1.0.0.0 had a startup bug: Jellyfin could not create the plugin, and the whole **Plugins** page then failed with "An error occurred while loading plugins". Version 1.0.1.0 fixes it. Your other plugins were never affected, only the page that lists them.
+
+To recover, restart Jellyfin once and wait a minute: its **Update Plugins** task installs 1.0.1.0 on its own, even while the Plugins page is broken. Then restart Jellyfin again to load it. The Plugins page works again afterwards.
+
+If that doesn't happen, stop Jellyfin, delete the `JellyTheme_1.0.0.0` folder from your plugins folder (see [Manual install](#manual-install) for where it is), start Jellyfin, and install JellyTheme again from the catalog.
 
 ## Be careful with
 
 - **YouTube's terms.** Downloading audio from YouTube may be against YouTube's Terms of Service, and theme songs are copyrighted. Use JellyTheme only for your own personal library, and decide for yourself whether you're comfortable with it. Plex themes don't involve YouTube.
 - **YouTube changes break downloads for a while.** When YouTube changes something, ThemerrDB downloads and the Missing themes page stop working until a fixed YoutubeExplode is released and the automatic update above picks it up. That usually takes days, not hours. Plex themes keep working the whole time. Watch the log for "Could not save theme" warnings.
 - **Read-only media folders.** If your media is mounted read-only (for example a Docker volume with `:ro`), or the Jellyfin user can't write to it, saving fails and the log shows a permission error. Give Jellyfin write access to those folders.
-- **What gets written.** JellyTheme only ever adds `theme.mp3` or `theme.m4a` to a movie or show folder. While downloading it briefly writes a hidden `.jellytheme.part` file next to it, and removes it when done. It never changes, moves or deletes anything else.
+- **What gets written.** JellyTheme only ever adds `theme.mp3` or `theme.m4a` to a movie or show folder. While downloading it briefly writes a hidden `.jellytheme-<random>.part` file next to it, and removes it when done. It never changes, moves or deletes anything else in your media folders. Preview downloads are kept in Jellyfin's cache folder (`cache/jellytheme`) for a day.
 - **The Plex theme server is unofficial.** Plex doesn't document it for outside use, so it could change or disappear without notice.
 - **Your access token appears in preview links.** A browser `<audio>` player can't send login headers, so preview links include your Jellyfin access token, the same way Jellyfin's own web player streams media. It can show up in reverse-proxy logs.
 - **Nobody checks what you pick.** ThemerrDB entries are reviewed by its community; your picks on the Missing themes page are not.
@@ -124,13 +132,15 @@ You can also update by hand: **Dashboard > Plugins > My Plugins > JellyTheme**, 
 
 | Symptom | Likely cause and fix |
 |---|---|
-| JellyTheme doesn't appear in the Catalog | The repository URL is wrong, or the server can't reach `raw.githubusercontent.com`. Re-check the URL in Repositories. |
+| JellyTheme doesn't appear under Available | The repository URL is wrong, or the server can't reach `raw.githubusercontent.com`. Re-check the URL under Manage Repositories. |
 | Plugin installed but not listed as Active | Jellyfin wasn't restarted, or it runs a version older than 12.1. |
+| "An error occurred while loading plugins" | You have JellyTheme 1.0.0.0. See [Upgrading from 1.0.0.0](#upgrading-from-1000). |
 | Plugin shows "Not supported" or "Malfunctioned" | Jellyfin is older than 12.1, or the install was incomplete. Uninstall, restart, install again. |
 | A show gets no theme | It has no TVDB or TMDB id (use **Identify** on it in Jellyfin), or neither Plex nor ThemerrDB has one. Use the Missing themes page. |
 | A movie gets no theme | It shares a folder with other movies, has no TMDB id, or ThemerrDB has no entry. |
 | A movie or show isn't on the Missing themes page | It already has a `theme.*` file or `theme-music` folder, or it's a movie in a shared folder. |
-| "Search failed" or previews won't play | YouTube changed something, or the server can't reach YouTube. Wait for the automatic update, and check the log. |
+| "Search failed" or previews won't play | YouTube changed something, or the server can't reach YouTube. Wait for the automatic update, and check the log. Very long videos are skipped on purpose. |
+| Preview won't play on one browser only | That browser can't play AAC audio (some Linux browser builds lack it). "Use this" still works; the theme plays in Jellyfin's apps. |
 | Theme saved but doesn't play | Check that **Theme songs** is on in your user's Display settings. Otherwise wait a minute for the refresh, or use **Refresh metadata** on the item. |
 | Permission errors in the log | Jellyfin can't write to the media folder. See "Read-only media folders" above. |
 
@@ -175,7 +185,7 @@ Manual installs don't update automatically.
 
 ## Uninstall
 
-Go to **Dashboard > Plugins > My Plugins > JellyTheme > Uninstall**, then restart Jellyfin. Themes that were already saved stay in your media folders and keep playing. To remove them too, delete the `theme.mp3` and `theme.m4a` files JellyTheme added.
+Go to **Dashboard > Plugins**, pick the **Installed** filter, open the menu on the JellyTheme card and choose **Uninstall**, then restart Jellyfin. Themes that were already saved stay in your media folders and keep playing. To remove them too, delete the `theme.mp3` and `theme.m4a` files JellyTheme added.
 
 ## For the maintainer: how releases work
 
