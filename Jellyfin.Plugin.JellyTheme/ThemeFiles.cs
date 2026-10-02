@@ -46,4 +46,35 @@ public static class ThemeFiles
             File.Delete(temp);
         }
     }
+
+    /// <summary>
+    /// Moves the folder's theme.* files aside as hidden .jellytheme-replaced-theme.* files, which Jellyfin ignores,
+    /// so a theme the user replaces can still be restored by renaming it back.
+    /// </summary>
+    /// <param name="folder">The movie or show folder.</param>
+    public static void SetAside(string folder)
+    {
+        foreach (var file in Directory.EnumerateFiles(folder, "theme.*").ToList())
+        {
+            File.Move(file, Path.Combine(folder, Replaced + Path.GetFileName(file)), overwrite: true);
+        }
+    }
+
+    /// <summary>
+    /// Undoes <see cref="SetAside"/> after a failed replace.
+    /// </summary>
+    /// <param name="folder">The movie or show folder.</param>
+    public static void Restore(string folder)
+    {
+        foreach (var file in Directory.EnumerateFiles(folder, Replaced + "theme.*").ToList())
+        {
+            var original = Path.Combine(folder, Path.GetFileName(file)[Replaced.Length..]);
+            if (!File.Exists(original))
+            {
+                File.Move(file, original);
+            }
+        }
+    }
+
+    private const string Replaced = ".jellytheme-replaced-";
 }

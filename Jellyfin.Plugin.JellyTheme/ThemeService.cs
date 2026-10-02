@@ -62,16 +62,26 @@ public class ThemeService
     };
 
     /// <summary>
-    /// Whether <paramref name="item"/> can hold a theme and has none yet.
+    /// Whether <paramref name="item"/> has a folder a theme can go in.
     /// </summary>
     /// <param name="item">Library item.</param>
-    /// <returns>True if the theme is missing.</returns>
-    public static bool MissingTheme(BaseItem item)
+    /// <returns>True if a theme can be saved for it.</returns>
+    public static bool CanHoldTheme(BaseItem item)
     {
         var folder = ThemeFolder(item);
+        return !string.IsNullOrEmpty(folder) && Directory.Exists(folder);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="item"/> can hold a theme but has none.
+    /// </summary>
+    /// <param name="item">Library item.</param>
+    /// <returns>True if missing.</returns>
+    public static bool MissingTheme(BaseItem item)
+    {
         try
         {
-            return !string.IsNullOrEmpty(folder) && Directory.Exists(folder) && !ThemeFiles.HasTheme(folder);
+            return CanHoldTheme(item) && !ThemeFiles.HasTheme(ThemeFolder(item)!);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -184,18 +194,31 @@ public class ThemeService
     /// </summary>
     /// <param name="item">The movie or series.</param>
     /// <param name="videoId">YouTube video id.</param>
+    /// <param name="replace">Replace an existing theme; the old theme.* files are kept as hidden backups.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if saved, false if the item can't take a theme or the video has no usable audio.</returns>
-    public async Task<bool> SaveYouTubeAsync(BaseItem item, VideoId videoId, CancellationToken cancellationToken)
+    public async Task<bool> SaveYouTubeAsync(BaseItem item, VideoId videoId, bool replace, CancellationToken cancellationToken)
     {
-        if (!MissingTheme(item) || await CachePreviewAsync(videoId, cancellationToken).ConfigureAwait(false) is not { } cached)
+        if (!(replace ? CanHoldTheme(item) : MissingTheme(item)) || await CachePreviewAsync(videoId, cancellationToken).ConfigureAwait(false) is not { } cached)
         {
             return false;
         }
 
-        await using (var audio = File.OpenRead(cached))
+        var folder = ThemeFolder(item)!;
+        if (replace)
         {
-            await ThemeFiles.SaveAsync(audio, ThemeFolder(item)!, "theme.m4a", cancellationToken).ConfigureAwait(false);
+            ThemeFiles.SetAside(folder);
+        }
+
+        try
+        {
+            await using var audio = File.OpenRead(cached);
+            await ThemeFiles.SaveAsync(audio, folder, "theme.m4a", cancellationToken).ConfigureAwait(false);
+        }
+        catch when (replace)
+        {
+            ThemeFiles.Restore(folder);
+            throw;
         }
 
         // The theme now lives in the item's folder; the cached copy is no longer needed.

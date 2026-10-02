@@ -48,16 +48,17 @@ public class ThemePickerController : ControllerBase
     /// <summary>
     /// Lists movies, shows and collections that can hold a theme but have none.
     /// </summary>
+    /// <param name="all">Also list items that already have a theme, to replace it.</param>
     /// <returns>The items, sorted by name.</returns>
     [HttpGet("Missing")]
-    public ActionResult Missing()
+    public ActionResult Missing([FromQuery] bool all = false)
         => Ok(_libraryManager.GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie, BaseItemKind.BoxSet],
                 IsVirtualItem = false,
                 Recursive = true,
             })
-            .Where(ThemeService.MissingTheme)
+            .Where(all ? ThemeService.CanHoldTheme : ThemeService.MissingTheme)
             .OrderBy(i => i.SortName)
             .Select(i => new
             {
@@ -67,6 +68,7 @@ public class ThemePickerController : ControllerBase
                 Year = i.ProductionYear,
                 Added = i.DateCreated,
                 Query = DefaultQuery(i),
+                HasTheme = all && !ThemeService.MissingTheme(i),
             }));
 
     /// <summary>
@@ -132,10 +134,11 @@ public class ThemePickerController : ControllerBase
     /// </summary>
     /// <param name="itemId">Movie or series id.</param>
     /// <param name="videoId">YouTube video id.</param>
+    /// <param name="replace">Replace the theme the item already has; the old files are kept as hidden backups.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The pre-filled ThemerrDB submit link, or null when the item has no TMDB id.</returns>
     [HttpPost("Save/{itemId}")]
-    public async Task<ActionResult> Save(Guid itemId, [FromQuery] string videoId, CancellationToken cancellationToken)
+    public async Task<ActionResult> Save(Guid itemId, [FromQuery] string videoId, [FromQuery] bool replace, CancellationToken cancellationToken)
     {
         var item = _libraryManager.GetItemById(itemId);
         if (item is null || VideoId.TryParse(videoId) is not { } id)
@@ -145,7 +148,7 @@ public class ThemePickerController : ControllerBase
 
         try
         {
-            if (!await _themes.SaveYouTubeAsync(item, id, cancellationToken).ConfigureAwait(false))
+            if (!await _themes.SaveYouTubeAsync(item, id, replace, cancellationToken).ConfigureAwait(false))
             {
                 return Conflict();
             }

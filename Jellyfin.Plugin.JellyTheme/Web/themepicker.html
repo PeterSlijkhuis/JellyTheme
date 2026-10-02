@@ -41,10 +41,16 @@
     <div data-role="content">
         <div class="content-primary">
             <h2 class="sectionTitle">Missing themes</h2>
-            <p class="jt-muted">These movies, shows and collections have no theme yet, and none was found on Plex or ThemerrDB. Press <b>Find themes</b>, play the results, and press <b>Use this</b> on the right one. Nothing is saved until you do.</p>
+            <p class="jt-muted">These movies, shows and collections have no theme yet, and none was found on Plex or ThemerrDB. Press <b>Find themes</b>, play the results, and press <b>Use this</b> on the right one. Nothing is saved until you do. To change a theme you already have, set <b>Items</b> to <b>All</b>.</p>
             <div class="jt-toolbar">
                 <div class="inputContainer jt-grow">
                     <input is="emby-input" id="jtFilter" type="search" label="Filter by name" autocomplete="off">
+                </div>
+                <div class="selectContainer">
+                    <select is="emby-select" id="jtScope" label="Items">
+                        <option value="">Without a theme</option>
+                        <option value="all">All, to replace a theme</option>
+                    </select>
                 </div>
                 <div class="selectContainer">
                     <select is="emby-select" id="jtType" label="Show">
@@ -74,6 +80,7 @@
             const filter = page.querySelector('#jtFilter');
             const type = page.querySelector('#jtType');
             const sort = page.querySelector('#jtSort');
+            const scope = page.querySelector('#jtScope');
             const status = page.querySelector('#jtStatus');
             const list = page.querySelector('#jtList');
             const more = page.querySelector('#jtMore');
@@ -172,7 +179,9 @@
             function render() {
                 stop();
                 const shown = visible();
-                if (!items.length) {
+                if (scope.value) {
+                    status.textContent = shown.length + (shown.length === 1 ? ' item' : ' items') + '. Ones that already have a theme say so; picking a new one replaces it.';
+                } else if (!items.length) {
                     status.textContent = 'Everything has a theme. New movies and shows are handled automatically when they are added.';
                 } else if (!shown.length) {
                     status.textContent = 'Nothing matches this filter. ' + needed(items.length) + ' in total.';
@@ -214,7 +223,7 @@
                     }));
                 const body = el('div', { className: 'jt-body' },
                     el('h3', { className: 'jt-title' }, el('a', { href: '#/details?id=' + item.Id, textContent: label(item) })),
-                    el('div', { className: 'jt-muted', textContent: kinds[item.Type] + (item.Type === 'Collection' ? ', plays on the collection page' : '') }),
+                    el('div', { className: 'jt-muted', textContent: kinds[item.Type] + (item.Type === 'Collection' ? ', plays on the collection page' : '') + (item.HasTheme ? ', has a theme' : '') }),
                     el('div', { className: 'jt-row jt-search' }, query, find),
                     keywords,
                     results);
@@ -250,7 +259,7 @@
 
             function result(item, video, best, body) {
                 const play = button('Play', 'jt-play');
-                const use = button('Use this', 'jt-use');
+                const use = button(item.HasTheme ? 'Replace with this' : 'Use this', 'jt-use');
                 const note = el('div', { className: 'jt-muted' });
                 const info = el('div', { className: 'jt-info' },
                     el('div', { textContent: video.Title, title: video.Title }, ...(best ? [el('span', { className: 'jt-badge', textContent: 'Best match' })] : [])),
@@ -278,9 +287,13 @@
                     use.disabled = true;
                     use.textContent = 'Saving...';
                     try {
-                        const saved = await ApiClient.ajax({ type: 'POST', url: api('Save/' + item.Id, { videoId: video.Id }), dataType: 'json' });
+                        const saved = await ApiClient.ajax({ type: 'POST', url: api('Save/' + item.Id, { videoId: video.Id, replace: !!item.HasTheme }), dataType: 'json' });
                         stop();
-                        items = items.filter(i => i.Id !== item.Id);
+                        if (scope.value) {
+                            item.HasTheme = true;
+                        } else {
+                            items = items.filter(i => i.Id !== item.Id);
+                        }
                         done(item, body, saved && saved.SubmitUrl, video.Duration);
                     } catch (e) {
                         use.disabled = false;
@@ -291,7 +304,6 @@
                 return row;
             }
 
-            // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
             // On phones github.com links open in the GitHub app, which drops the pre-filled form fields.
             // These links skip the app: Chrome on Android via an intent, Safari on iOS 17+ via x-safari-https.
             // Desktop browsers get null and just use the normal link.
@@ -332,6 +344,7 @@
                     field('YouTube Theme Song Video URL', params.get('youtube_theme_url')));
             }
 
+            // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
             function done(item, body, submitUrl, seconds) {
                 const close = button('Done');
                 close.addEventListener('click', () => body.parentElement.remove());
@@ -366,7 +379,9 @@
                 }
                 actions.style.marginTop = '.6em';
                 body.replaceChildren(...children, actions, extra);
-                status.textContent = needed(items.length);
+                if (!scope.value) {
+                    status.textContent = needed(items.length);
+                }
             }
 
             filter.addEventListener('input', () => {
@@ -385,15 +400,30 @@
                 updateMore(shown.length);
             });
             page.addEventListener('pagehide', stop);
-            page.addEventListener('pageshow', async () => {
+            // #/configurationpage?name=JellyTheme&item=<id> opens on one movie, show or collection, theme or not.
+            function linkedItem() {
+                return new URLSearchParams(location.hash.split('?')[1] || '').get('item');
+            }
+
+            async function load() {
                 status.textContent = 'Loading...';
+                const linked = linkedItem();
+                if (linked) {
+                    scope.value = 'all';
+                }
                 try {
-                    items = await ApiClient.getJSON(api('Missing'));
+                    items = await ApiClient.getJSON(api('Missing', scope.value ? { all: true } : undefined));
+                    limit = PAGE_SIZE;
+                    const match = linked && items.find(i => i.Id.replace(/-/g, '') === linked.replace(/-/g, '').toLowerCase());
+                    filter.value = match ? match.Name : filter.value;
                     render();
                 } catch (e) {
                     status.textContent = 'Could not load the list. Only administrators can use this page.';
                 }
-            });
+            }
+
+            scope.addEventListener('change', load);
+            page.addEventListener('pageshow', load);
         })();
     </script>
 </div>
