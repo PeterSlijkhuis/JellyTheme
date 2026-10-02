@@ -1,0 +1,12 @@
+[
+  {
+    "guid": "a0373070-26ce-4f00-92ce-d760f5edc5cb",
+    "name": "JellyTheme",
+    "description": "Adds theme songs to your movies and TV shows. Fills them automatically from Plex's TV theme server and ThemerrDB, and adds a Missing themes page where you pick YouTube themes for the rest by ear.",
+    "overview": "Theme songs for every movie and TV show",
+    "owner": "PeterSlijkhuis",
+    "category": "Metadata",
+    "imageUrl": "https://raw.githubusercontent.com/PeterSlijkhuis/JellyTheme/main/assets/banner.png",
+    "versions": []
+  }
+]

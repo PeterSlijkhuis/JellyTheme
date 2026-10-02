@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <EmbeddedResource Include="Web/themepicker.html" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="12.1.0" ExcludeAssets="runtime" />
     <PackageReference Include="YoutubeExplode" Version="6.6.2" />
   </ItemGroup>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!-- Source for banner.png. Render at 1280x720 (e.g. a headless browser screenshot). -->
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;800&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; }
+  body {
+    font-family: 'Poppins', sans-serif;
+    background:
+      radial-gradient(circle at 18% 30%, rgba(170, 92, 195, .55), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(0, 164, 220, .45), transparent 45%),
+      linear-gradient(135deg, #0d0b24 0%, #1b1240 55%, #0a1f3a 100%);
+    color: #fff;
+    display: flex; align-items: center; gap: 56px; padding: 0 96px; box-sizing: border-box;
+  }
+  .waves { position: absolute; inset: 0; opacity: .18; }
+  h1 { font-size: 112px; font-weight: 800; margin: 0; line-height: 1; letter-spacing: -2px; }
+  h1 span { background: linear-gradient(90deg, #c77dff, #3cc8f5); -webkit-background-clip: text; color: transparent; }
+  p { font-size: 34px; font-weight: 500; margin: 22px 0 34px; color: #d9d4f5; }
+  .chips { display: flex; gap: 14px; }
+  .chip { font-size: 22px; font-weight: 500; padding: 8px 22px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25); }
+</style>
+</head>
+<body>
+<svg class="waves" viewBox="0 0 1280 720" preserveAspectRatio="none">
+  <path d="M0 560 Q160 500 320 560 T640 560 T960 560 T1280 560" fill="none" stroke="#fff" stroke-width="3"/>
+  <path d="M0 610 Q160 550 320 610 T640 610 T960 610 T1280 610" fill="none" stroke="#fff" stroke-width="2"/>
+  <path d="M0 660 Q160 600 320 660 T640 660 T960 660 T1280 660" fill="none" stroke="#fff" stroke-width="1.5"/>
+</svg>
+<svg width="300" height="360" viewBox="0 0 300 360" style="position:relative;flex:none">
+  <defs>
+    <linearGradient id="dome" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c77dff"/><stop offset="1" stop-color="#2fb7ee"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="10"/></filter>
+  </defs>
+  <!-- jellyfish dome -->
+  <path d="M30 170 A120 120 0 0 1 270 170 Q270 190 250 190 L50 190 Q30 190 30 170 Z" fill="url(#dome)" filter="url(#glow)" opacity=".7"/>
+  <path d="M30 170 A120 120 0 0 1 270 170 Q270 190 250 190 L50 190 Q30 190 30 170 Z" fill="url(#dome)"/>
+  <!-- tentacles as sound waves -->
+  <g fill="none" stroke="url(#dome)" stroke-width="10" stroke-linecap="round">
+    <path d="M80 200 q-18 30 0 60 t0 60"/>
+    <path d="M150 200 q18 35 0 70 t0 70"/>
+    <path d="M220 200 q-18 30 0 60 t0 60"/>
+  </g>
+  <!-- music note -->
+  <g fill="#fff">
+    <rect x="160" y="62" width="12" height="88" rx="4"/>
+    <path d="M166 62 q40 6 44 40 q-14 -18 -44 -14 z"/>
+    <ellipse cx="146" cy="152" rx="26" ry="19" transform="rotate(-20 146 152)"/>
+  </g>
+</svg>
+<div style="position:relative">
+  <h1>Jelly<span>Theme</span></h1>
+  <p>Theme songs for every movie and TV show</p>
+  <div class="chips"><div class="chip">Plex</div><div class="chip">ThemerrDB</div><div class="chip">YouTube picker</div></div>
+</div>
+</body>
+</html>
