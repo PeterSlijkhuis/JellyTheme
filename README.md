@@ -117,6 +117,10 @@ JellyTheme combines ideas from two existing plugins and builds on open data and 
 - The Missing themes page: a filtered list of everything without a theme, with several YouTube results to listen to side by side before saving.
 - Safe file handling: downloads go to a temporary file first, so a dropped connection never leaves a broken theme. Existing themes are never touched.
 
+## License
+
+JellyTheme is free software under the [GNU General Public License v3.0](LICENSE). You may use, change and share it, as long as anything you distribute that is based on it stays under the same license.
+
 ## Development
 
 ```sh
