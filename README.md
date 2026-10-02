@@ -156,7 +156,7 @@ If that doesn't happen, stop Jellyfin, delete the `JellyTheme_1.0.0.0` folder fr
 | A show gets no theme | It has no TVDB or TMDB id (use **Identify** on it in Jellyfin), or neither Plex nor ThemerrDB has one. Use the Missing themes page. |
 | A movie gets no theme | It shares a folder with other movies, has no TMDB id, or ThemerrDB has no entry. |
 | A movie or show isn't on the Missing themes page | It already has a `theme.*` file or `theme-music` folder, or it's a movie in a shared folder. |
-| The ThemerrDB form opens with only a title | GitHub dropped the pre-filled fields. This happens in the GitHub mobile app and sometimes after signing in. Copy the two links shown under **Submit to ThemerrDB** into the form, or open the link in a browser instead of the app. |
+| The ThemerrDB form opens with only a title | GitHub dropped the pre-filled fields. This happens in the GitHub mobile app and sometimes after signing in. On a phone, use **Submit in browser** (Chrome on Android, Safari on iOS 17 or newer) instead of **Submit in GitHub app**. Or copy the two links shown below the buttons into the form. |
 | "This item has no TMDB id" after saving | TMDb isn't enabled for that library, or the item isn't matched. See [Prerequisites](#prerequisites). The theme itself is saved fine. |
 | Collection theme doesn't play | Open the collection itself (not the Collections overview) and check **Theme songs** is on. |
 | "Search failed" or previews won't play | YouTube changed something, or the server can't reach YouTube. Wait for the automatic update, and check the log. Very long videos are skipped on purpose. |

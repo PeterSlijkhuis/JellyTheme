@@ -292,6 +292,20 @@
             }
 
             // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
+            // On phones github.com links open in the GitHub app, which drops the pre-filled form fields.
+            // These links skip the app: Chrome on Android via an intent, Safari on iOS 17+ via x-safari-https.
+            // Desktop browsers get null and just use the normal link.
+            function inBrowser(url) {
+                const ua = navigator.userAgent;
+                if (/Android/i.test(ua)) {
+                    return 'intent://' + url.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+                }
+                if (/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+                    return 'x-safari-' + url;
+                }
+                return null;
+            }
+
             // GitHub sometimes opens the form without our values (the GitHub mobile app, or after signing in),
             // so show them ready to copy into the two fields.
             function formValues(submitUrl) {
@@ -337,8 +351,14 @@
                     if (seconds && (seconds < 20 || seconds > 300)) {
                         children.push(el('p', { className: 'jt-message', textContent: 'Note: this video is ' + clock(seconds) + ' long. ThemerrDB prefers themes between 0:20 and 5:00, so it may be turned down.' }));
                     }
-                    const submit = el('a', { href: submitUrl, target: '_blank', rel: 'noopener', className: 'raised button-submit emby-button', textContent: 'Submit to ThemerrDB', style: 'text-decoration:none' });
-                    actions.append(submit, close);
+                    // App-switching links can't open in a new tab, so only the normal link gets one.
+                    const link = (href, text, primary) => el('a', { href, target: href.startsWith('https:') ? '_blank' : '', rel: 'noopener', className: 'raised emby-button' + (primary ? ' button-submit' : ''), textContent: text, style: 'text-decoration:none' });
+                    const browser = inBrowser(submitUrl);
+                    if (browser) {
+                        actions.append(link(browser, 'Submit in browser', true), link(submitUrl, 'Submit in GitHub app', false), close);
+                    } else {
+                        actions.append(link(submitUrl, 'Submit to ThemerrDB', true), close);
+                    }
                     extra = formValues(submitUrl);
                 } else {
                     children.push(el('p', { className: 'jt-message jt-muted', textContent: 'This item has no TMDB id, so it cannot be submitted to ThemerrDB.' }));
