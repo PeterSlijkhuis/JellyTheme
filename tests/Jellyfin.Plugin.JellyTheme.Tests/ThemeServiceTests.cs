@@ -8,6 +8,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
@@ -162,6 +163,67 @@ public sealed class ThemeServiceTests : IDisposable
 
         Assert.False(await service.TrySaveAsync(show, CancellationToken.None));
         Assert.Equal(new[] { "tvthemes.plexapp.com", "app.lizardbyte.dev" }, hosts);
+    }
+
+    [Fact]
+    public async Task CleanMissIsRememberedAcrossRestartsButOutagesAreNot()
+    {
+        var calls = 0;
+        var status = HttpStatusCode.NotFound;
+        var http = new Mock<IHttpClientFactory>();
+        http.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(new Handler(_ =>
+        {
+            calls++;
+            return status;
+        })));
+        var paths = Mock.Of<IApplicationPaths>(p => p.DataPath == Path.Combine(_dir, "data"));
+        ThemeService NewService() => new(http.Object, Mock.Of<IProviderManager>(), Mock.Of<IFileSystem>(), paths, NullLogger<ThemeService>.Instance);
+        var show = Show();
+
+        // Plex down: not remembered, so the next try asks again.
+        status = HttpStatusCode.InternalServerError;
+        Assert.False(await NewService().TrySaveAsync(show, CancellationToken.None));
+        Assert.False(NewService().RecentlyMissed(show));
+
+        // Plex answers that it has nothing: remembered, also by the service after a restart.
+        status = HttpStatusCode.NotFound;
+        Assert.False(await NewService().TrySaveAsync(show, CancellationToken.None));
+        var asked = calls;
+        var restarted = NewService();
+        Assert.True(restarted.RecentlyMissed(show));
+        Assert.False(await restarted.TrySaveAsync(show, CancellationToken.None));
+        Assert.Equal(asked, calls);
+    }
+
+    [Fact]
+    public async Task NewItemsWaitForTheLibraryScan()
+    {
+        var calls = 0;
+        var http = new Mock<IHttpClientFactory>();
+        http.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(new Handler(_ =>
+        {
+            Interlocked.Increment(ref calls);
+            return HttpStatusCode.NotFound;
+        })));
+        var service = new ThemeService(http.Object, Mock.Of<IProviderManager>(), Mock.Of<IFileSystem>(), Mock.Of<IApplicationPaths>(), NullLogger<ThemeService>.Instance);
+        var scanning = true;
+        var library = new Mock<ILibraryManager>();
+        library.Setup(l => l.IsScanRunning).Returns(() => scanning);
+        using var listener = new NewItemListener(library.Object, service, NullLogger<NewItemListener>.Instance);
+        await listener.StartAsync(CancellationToken.None);
+
+        library.Raise(l => l.ItemUpdated += null, library.Object, new ItemChangeEventArgs { Item = Show() });
+        await Task.Delay(300);
+        Assert.Equal(0, calls);
+
+        scanning = false;
+        for (var i = 0; i < 100 && calls == 0; i++)
+        {
+            await Task.Delay(200);
+        }
+
+        Assert.Equal(1, calls);
+        await listener.StopAsync(CancellationToken.None);
     }
 
     private Plugin NewPlugin()

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
@@ -29,7 +30,10 @@ public class ThemeService
     private readonly IFileSystem _fileSystem;
     private readonly IApplicationPaths _applicationPaths;
     private readonly ILogger<ThemeService> _logger;
+    private static readonly TimeSpan MissRetry = TimeSpan.FromDays(7);
     private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _previews = new();
+    private readonly Lock _missLock = new();
+    private Dictionary<Guid, DateTime>? _misses;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ThemeService"/> class.
@@ -113,33 +117,36 @@ public class ThemeService
     /// <returns>True if a theme was saved.</returns>
     public async Task<bool> TrySaveAsync(BaseItem item, CancellationToken cancellationToken)
     {
-        if (!NeedsTheme(item))
+        if (!NeedsTheme(item) || RecentlyMissed(item))
         {
             return false;
         }
 
         var folder = ThemeFolder(item)!;
         var http = _httpClientFactory.CreateClient();
-        string? source = null;
 
-        // Each source gets its own try, so a Plex outage still falls through to ThemerrDB.
-        if (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out var tvdbId)
-            && await TryAsync(item, "Plex", () => PlexThemeDownloader.TryDownloadAsync(http, tvdbId, folder, cancellationToken)).ConfigureAwait(false))
-        {
-            source = "Plex";
-        }
-        else if (item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbId)
-                 && await TryAsync(item, "ThemerrDB", async () => await ThemerrDb.GetYouTubeUrlAsync(http, ThemerrKind(item), tmdbId, cancellationToken).ConfigureAwait(false) is { } url
-                                                              && await YouTubeAudio.TrySaveAsync(http, url, folder, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false))
-        {
-            source = "ThemerrDB";
-        }
+        // Each source gets its own try, so a Plex outage still falls through to ThemerrDB. Null means the source failed.
+        bool? plex = item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out var tvdbId)
+            ? await TryAsync(item, "Plex", () => PlexThemeDownloader.TryDownloadAsync(http, tvdbId, folder, cancellationToken)).ConfigureAwait(false)
+            : false;
+        bool? themerr = plex is not true && item.TryGetProviderId(MetadataProvider.Tmdb, out var tmdbId)
+            ? await TryAsync(item, "ThemerrDB", async () => await ThemerrDb.GetYouTubeUrlAsync(http, ThemerrKind(item), tmdbId, cancellationToken).ConfigureAwait(false) is { } url
+                                                       && await YouTubeAudio.TrySaveAsync(http, url, folder, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false)
+            : false;
 
+        var source = plex is true ? "Plex" : themerr is true ? "ThemerrDB" : null;
         if (source is null)
         {
+            // Only a clean "no theme anywhere" is remembered; after an outage the item is tried again next time.
+            if (plex is not null && themerr is not null)
+            {
+                SetMissed(item.Id, true);
+            }
+
             return false;
         }
 
+        SetMissed(item.Id, false);
         _logger.LogInformation("Saved {Source} theme for {Name}", source, item.Name);
         QueueRefresh(item);
         return true;
@@ -154,6 +161,8 @@ public class ThemeService
         => item switch { Series => ThemerrDb.Kind.Show, BoxSet => ThemerrDb.Kind.Collection, _ => ThemerrDb.Kind.Movie };
 
     private string PreviewCache => Path.Combine(_applicationPaths.CachePath, "jellytheme");
+
+    private string? MissFile => string.IsNullOrEmpty(_applicationPaths.DataPath) ? null : Path.Combine(_applicationPaths.DataPath, "jellytheme", "misses.json");
 
     /// <summary>
     /// Downloads (once) the audio of a YouTube video for previewing.
@@ -242,7 +251,7 @@ public class ThemeService
         return true;
     }
 
-    private async Task<bool> TryAsync(BaseItem item, string source, Func<Task<bool>> save)
+    private async Task<bool?> TryAsync(BaseItem item, string source, Func<Task<bool>> save)
     {
         try
         {
@@ -251,8 +260,71 @@ public class ThemeService
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or YoutubeExplodeException or System.Text.Json.JsonException)
         {
             _logger.LogWarning(ex, "Could not save {Source} theme for {Name}", source, item.Name);
-            return false;
+            return null;
         }
+    }
+
+    /// <summary>
+    /// Whether no source had a theme for <paramref name="item"/> in the last week. Remembered across restarts,
+    /// so the daily task and every server start don't ask Plex and ThemerrDB again for the same misses.
+    /// </summary>
+    /// <param name="item">Library item.</param>
+    /// <returns>True if it was missed recently.</returns>
+    public bool RecentlyMissed(BaseItem item)
+    {
+        lock (_missLock)
+        {
+            return Misses().TryGetValue(item.Id, out var at) && DateTime.UtcNow - at < MissRetry;
+        }
+    }
+
+    private void SetMissed(Guid id, bool missed)
+    {
+        lock (_missLock)
+        {
+            var misses = Misses();
+            if (missed)
+            {
+                misses[id] = DateTime.UtcNow;
+            }
+            else if (!misses.Remove(id))
+            {
+                return;
+            }
+
+            if (MissFile is { } file)
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                    File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(misses));
+                    File.Move(file + ".tmp", file, true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(ex, "Could not remember the themes no source had");
+                }
+            }
+        }
+    }
+
+    private Dictionary<Guid, DateTime> Misses()
+    {
+        if (_misses is null)
+        {
+            try
+            {
+                _misses = MissFile is { } file && File.Exists(file) ? JsonSerializer.Deserialize<Dictionary<Guid, DateTime>>(File.ReadAllText(file)) : null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // A broken file only means asking again.
+            }
+
+            _misses ??= [];
+        }
+
+        return _misses;
     }
 
     // Validation only: re-reads the item's folder so Jellyfin sees the new theme file,
