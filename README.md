@@ -46,7 +46,7 @@ The automatic sources run:
 - **Every day**, as the scheduled task **Download theme songs** (Dashboard > Scheduled Tasks > JellyTheme). You can also start it by hand there.
 - **For every new movie or show**, as soon as Jellyfin has fetched its metadata. You don't have to wait for the daily run.
 
-After a theme is saved, JellyTheme asks Jellyfin to refresh that item, so the theme plays right away without a full library scan.
+After a theme is saved, JellyTheme asks Jellyfin to re-read just that item's folder, so the theme plays right away without a full library scan. This light refresh does not fetch metadata or images again. Nothing else is refreshed: JellyTheme never triggers library scans, and each movie, show or collection is checked once per server start when its metadata arrives, plus in the daily task while it still has no theme.
 
 The ids (TVDB, TMDB) come from Jellyfin's normal metadata. If your movies and shows show posters and descriptions, they almost certainly have these ids already.
 
