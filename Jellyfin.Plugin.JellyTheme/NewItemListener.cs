@@ -2,6 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Hosting;
 
@@ -46,9 +48,16 @@ public sealed class NewItemListener : IHostedService
     private void OnItemUpdated(object? sender, ItemChangeEventArgs e)
     {
         // Provider ids arrive with the first metadata refresh, which raises ItemUpdated, not ItemAdded.
-        if (ThemeService.NeedsTheme(e.Item) && _tried.TryAdd(e.Item.Id, 0))
+        // ItemUpdated fires for every item on every scan, so the cheap checks go first and each movie, show or
+        // collection is looked at once per server start: its folder is only read the first time it has ids.
+        var item = e.Item;
+        if (item is Movie or Series or BoxSet
+            && !_tried.ContainsKey(item.Id)
+            && ThemeService.HasLookupId(item)
+            && _tried.TryAdd(item.Id, 0)
+            && ThemeService.MissingTheme(item))
         {
-            _ = _themes.TrySaveAsync(e.Item, CancellationToken.None);
+            _ = _themes.TrySaveAsync(item, CancellationToken.None);
         }
     }
 }

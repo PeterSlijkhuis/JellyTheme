@@ -95,9 +95,15 @@ public class ThemeService
     /// </summary>
     /// <param name="item">Library item.</param>
     /// <returns>True if worth looking up.</returns>
-    public static bool NeedsTheme(BaseItem item)
-        => (item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _)))
-           && MissingTheme(item);
+    public static bool NeedsTheme(BaseItem item) => HasLookupId(item) && MissingTheme(item);
+
+    /// <summary>
+    /// Whether <paramref name="item"/> has an id Plex or ThemerrDB can look up. Doesn't touch the disk.
+    /// </summary>
+    /// <param name="item">Library item.</param>
+    /// <returns>True if it has a TMDB id, or a TVDB id for a show.</returns>
+    public static bool HasLookupId(BaseItem item)
+        => item.TryGetProviderId(MetadataProvider.Tmdb, out _) || (item is Series && item.TryGetProviderId(MetadataProvider.Tvdb, out _));
 
     /// <summary>
     /// Saves a theme for <paramref name="item"/> and queues a refresh so it plays right away.
@@ -249,6 +255,15 @@ public class ThemeService
         }
     }
 
+    // Validation only: re-reads the item's folder so Jellyfin sees the new theme file,
+    // without asking TMDb or other providers for metadata again.
     private void QueueRefresh(BaseItem item)
-        => _providerManager.QueueRefresh(item.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
+        => _providerManager.QueueRefresh(
+            item.Id,
+            new MetadataRefreshOptions(new DirectoryService(_fileSystem))
+            {
+                MetadataRefreshMode = MetadataRefreshMode.ValidationOnly,
+                ImageRefreshMode = MetadataRefreshMode.ValidationOnly,
+            },
+            RefreshPriority.Normal);
 }
