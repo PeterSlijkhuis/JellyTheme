@@ -44,9 +44,9 @@ JellyTheme tries three sources, in this order, and stops at the first one that h
 The automatic sources run:
 
 - **Every day**, as the scheduled task **Download theme songs** (Dashboard > Scheduled Tasks > JellyTheme). You can also start it by hand there.
-- **For every new movie or show**, as soon as Jellyfin has fetched its metadata. You don't have to wait for the daily run.
+- **For every new movie or show**, as soon as Jellyfin has fetched its metadata. You don't have to wait for the daily run. Downloads go one at a time, and wait until a running library scan has finished, so they never slow the scan down.
 
-After a theme is saved, JellyTheme asks Jellyfin to re-read just that item's folder, so the theme plays right away without a full library scan. This light refresh does not fetch metadata or images again. Nothing else is refreshed: JellyTheme never triggers library scans, and each movie, show or collection is checked once per server start when its metadata arrives, plus in the daily task while it still has no theme.
+After a theme is saved, JellyTheme asks Jellyfin to re-read just that item's folder, so the theme plays right away without a full library scan. This light refresh does not fetch metadata or images again. Nothing else is refreshed: JellyTheme never triggers library scans, and each movie, show or collection is checked once per server start when its metadata arrives, plus in the daily task while it still has no theme. When no source has a theme for an item, JellyTheme remembers that for a week, also across restarts, instead of asking again every day. If a source was down, it tries again next time.
 
 The ids (TVDB, TMDB) come from Jellyfin's normal metadata. If your movies and shows show posters and descriptions, they almost certainly have these ids already.
 
@@ -100,7 +100,7 @@ That's it. Continue with [First run](#first-run).
 2. When it finishes, open **JellyTheme** in the dashboard menu to see what is still missing, and fill those in by hand (see below).
 3. Make sure theme songs are turned on for your user: open your user settings, go to **Display**, and enable **Theme songs**. This is a per-user Jellyfin setting.
 
-After that there is nothing you have to do. New movies and shows get themes on their own, and the daily task retries anything that failed earlier.
+After that there is nothing you have to do. New movies and shows get themes on their own, and the daily task retries anything that failed earlier. Items no source had a theme for are asked again after a week.
 
 ## Using the Missing themes page
 
