@@ -6,7 +6,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using YoutubeExplode;
-using YoutubeExplode.Common;
 using YoutubeExplode.Search;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
@@ -126,13 +125,19 @@ public static class YouTubeAudio
     }
 
     /// <summary>
-    /// Searches YouTube videos.
+    /// Searches YouTube videos. Only the first page: a second one doubles the wait and rarely holds the theme.
     /// </summary>
     /// <param name="http">Http client.</param>
     /// <param name="query">Search text.</param>
-    /// <param name="count">Max results.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The top results.</returns>
-    public static async Task<IReadOnlyList<VideoSearchResult>> SearchAsync(HttpClient http, string query, int count, CancellationToken cancellationToken)
-        => await new YoutubeClient(http).Search.GetVideosAsync(query, cancellationToken).CollectAsync(count).ConfigureAwait(false);
+    /// <returns>The first page of results, about 20.</returns>
+    public static async Task<IReadOnlyList<VideoSearchResult>> SearchAsync(HttpClient http, string query, CancellationToken cancellationToken)
+    {
+        await foreach (var batch in new YoutubeClient(http).Search.GetResultBatchesAsync(query, SearchFilter.Video, cancellationToken).ConfigureAwait(false))
+        {
+            return batch.Items.OfType<VideoSearchResult>().ToList();
+        }
+
+        return [];
+    }
 }
