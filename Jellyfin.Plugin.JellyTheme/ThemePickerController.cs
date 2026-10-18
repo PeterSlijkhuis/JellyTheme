@@ -195,6 +195,32 @@ public class ThemePickerController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// A page on this server that moves on to the pre-filled ThemerrDB form by script, after it has loaded.
+    /// On phones a tapped github.com link opens the GitHub app, which drops the pre-filled fields. A redirect
+    /// made by the page itself, with no tap behind it, stays in the browser, so the form arrives filled in.
+    /// Anonymous because the phone's browser has no Jellyfin login; it only ever sends people to ThemerrDB.
+    /// </summary>
+    /// <param name="to">The ThemerrDB form link from Save.</param>
+    /// <returns>The hop page.</returns>
+    [AllowAnonymous]
+    [HttpGet("Submit")]
+    public ActionResult Submit([FromQuery] string? to)
+    {
+        if (!ThemerrDb.IsSubmitUrl(to))
+        {
+            return BadRequest();
+        }
+
+        var href = System.Net.WebUtility.HtmlEncode(new Uri(to!).AbsoluteUri);
+        return Content(
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Submit to ThemerrDB</title></head>"
+            + "<body style=\"font-family:sans-serif;padding:1.5em\"><p>Opening the ThemerrDB form...</p>"
+            + $"<p><a id=\"go\" href=\"{href}\">Open it here</a> if nothing happens. If the GitHub app opens with an empty form, use your browser instead.</p>"
+            + "<script>setTimeout(function () { location.replace(document.getElementById('go').href); }, 300);</script></body></html>",
+            "text/html; charset=utf-8");
+    }
+
     // ThemerrDB asks for a reason when a submission replaces its current theme. Having one here means it failed to download.
     private async Task<string?> CurrentThemerrThemeAsync(ThemerrDb.Kind kind, string tmdbId, CancellationToken cancellationToken)
     {
