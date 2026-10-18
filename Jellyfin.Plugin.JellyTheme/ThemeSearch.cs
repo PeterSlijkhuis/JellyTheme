@@ -20,7 +20,15 @@ public static partial class ThemeSearch
         "drum", "tutorial", "lesson", "how to", "remix", "slowed", "reverb", "nightcore", "8d", "hour", "hours", "loop",
         "extended", "compilation", "ranking", "top 10", "every ", "parody", "karaoke", "instrumental cover", "fan made",
         "fanmade", "ai ", "minecraft", "roblox", "meme", "shorts", "#shorts", "behind the scenes", "interview", "scene", "clip",
+        "lofi", "lo fi", "8 bit", "8bit", "music box", "sped up", "bass boosted", "mashup", "unofficial", "concept", "ringtone",
+        "recreation", "recreated", "epic version", "full album", "full soundtrack", "complete soundtrack", "playlist", "ost cover",
     ];
+
+    // Channels of labels and studios, besides YouTube's own "Artist - Topic".
+    private static readonly string[] LabelWords = ["vevo", "records", "music", "soundtrack", "official", "studios", "pictures"];
+
+    // Too common to tell titles apart.
+    private static readonly string[] StopWords = ["the", "a", "an", "of", "and", "&", "to", "in", "on"];
 
     /// <summary>
     /// The name without a trailing "(1999)", which items without metadata carry.
@@ -43,12 +51,31 @@ public static partial class ThemeSearch
     /// <param name="year">Production year, if known.</param>
     /// <param name="isMovie">True for movies, false for shows.</param>
     /// <returns>The search text.</returns>
-    public static string DefaultQuery(string name, int? year, bool isMovie)
+    public static string DefaultQuery(string name, int? year, bool isMovie) => Queries(name, year, isMovie, null)[0];
+
+    /// <summary>
+    /// All searches run for an item: the default first, then wordings that find what it misses.
+    /// Movie themes go by "main theme", "soundtrack" or "theme song"; show themes by "theme song", "intro" or "opening".
+    /// </summary>
+    /// <param name="name">Item name.</param>
+    /// <param name="year">Production year, if known.</param>
+    /// <param name="isMovie">True for movies, false for shows.</param>
+    /// <param name="originalTitle">The title in its own language, searched too when it differs.</param>
+    /// <returns>The search texts.</returns>
+    public static IReadOnlyList<string> Queries(string name, int? year, bool isMovie, string? originalTitle)
     {
         var clean = CleanName(name);
 
         // Year only for movies: it separates remakes, while show uploads rarely mention it.
-        return isMovie ? $"{clean} {year} main theme".Replace("  ", " ", StringComparison.Ordinal) : $"{clean} theme song";
+        var queries = isMovie
+            ? new List<string> { $"{clean} {year} main theme", $"{clean} {year} soundtrack theme", $"{clean} movie theme song" }
+            : new List<string> { $"{clean} theme song", $"{clean} intro", $"{clean} opening theme" };
+        if (!string.IsNullOrWhiteSpace(originalTitle) && !Normalize(originalTitle).Equals(Normalize(clean), StringComparison.Ordinal))
+        {
+            queries.Add(isMovie ? $"{CleanName(originalTitle)} {year} theme" : $"{CleanName(originalTitle)} opening");
+        }
+
+        return queries.Select(q => q.Replace("  ", " ", StringComparison.Ordinal)).ToList();
     }
 
     /// <summary>
@@ -58,16 +85,38 @@ public static partial class ThemeSearch
     /// <param name="title">Video title.</param>
     /// <param name="channel">Channel name.</param>
     /// <param name="duration">Video length, null for live streams.</param>
+    /// <param name="year">Movie year, to tell remakes apart; null for shows.</param>
     /// <returns>The score.</returns>
-    public static int Score(string name, string title, string channel, TimeSpan? duration)
+    public static int Score(string name, string title, string channel, TimeSpan? duration, int? year = null)
     {
         var t = Normalize(title);
-        var n = Normalize(CleanName(name));
+
+        // "The Office (US)" is "The Office" in upload titles.
+        var n = Normalize(Parenthetical().Replace(CleanName(name), string.Empty));
         var score = 0;
 
-        if (t.Contains(n, StringComparison.Ordinal))
+        // Whole name, or most of its words: uploads write "Spider-Man: No Way Home" a dozen ways.
+        var words = n.Split(' ').Where(w => !StopWords.Contains(w)).DefaultIfEmpty(n).ToList();
+        var found = words.Count(w => Has(t, w));
+        if (t.Contains(n, StringComparison.Ordinal) || found == words.Count)
         {
             score += 3;
+        }
+        else if (found * 2 >= words.Count)
+        {
+            score += 1;
+        }
+
+        // A different year in the title usually means the remake or the original.
+        if (year is { } y)
+        {
+            var years = Year().Matches(t).Select(m => int.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture)).ToList();
+            score += years.Any(x => Math.Abs(x - y) <= 1) ? 1 : years.Count > 0 ? -2 : 0;
+        }
+
+        if (Has(t, "official"))
+        {
+            score += 1;
         }
 
         if (ThemeWords.Any(w => t.Contains(w, StringComparison.Ordinal)))
@@ -79,6 +128,10 @@ public static partial class ThemeSearch
         if (channel.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase))
         {
             score += 2;
+        }
+        else if (LabelWords.Any(w => Has(Normalize(channel), w)))
+        {
+            score += 1;
         }
 
         // Whole words only, and never words from the title itself ("Rush Hour", "The Piano").
@@ -112,6 +165,21 @@ public static partial class ThemeSearch
     public static IReadOnlyList<T> Best<T>(IEnumerable<T> results, Func<T, int> score, int count)
         => results.Select((r, i) => (r, i, s: score(r))).OrderByDescending(x => x.s).ThenBy(x => x.i).Take(count).Select(x => x.r).ToList();
 
+    /// <summary>
+    /// Joins the results of several searches: each video once, at its best position, with how many searches found it.
+    /// A video several wordings agree on is more likely the real theme.
+    /// </summary>
+    /// <typeparam name="T">Result type.</typeparam>
+    /// <param name="lists">Results per search, best first.</param>
+    /// <param name="key">Identifies a video.</param>
+    /// <returns>The joined results, interleaved by position.</returns>
+    public static IReadOnlyList<(T Result, int Hits)> Merge<T>(IEnumerable<IReadOnlyList<T>> lists, Func<T, string> key)
+        => lists.SelectMany(l => l.Select((r, i) => (r, i)))
+            .OrderBy(x => x.i)
+            .GroupBy(x => key(x.r))
+            .Select(g => (g.First().r, g.Count()))
+            .ToList();
+
     private static bool Has(string text, string word)
         => (" " + text + " ").Contains(" " + word + " ", StringComparison.Ordinal);
 
@@ -123,6 +191,12 @@ public static partial class ThemeSearch
 
     [GeneratedRegex(@"\s*\(\d{4}\)\s*$")]
     private static partial Regex YearSuffix();
+
+    [GeneratedRegex(@"\s*\([^)]*\)\s*$")]
+    private static partial Regex Parenthetical();
+
+    [GeneratedRegex(@"\b(19|20)\d\d\b")]
+    private static partial Regex Year();
 
     [GeneratedRegex(@"[^\p{L}\p{N}#]+")]
     private static partial Regex NonWord();

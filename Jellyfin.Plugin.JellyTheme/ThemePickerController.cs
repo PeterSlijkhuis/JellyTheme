@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -13,6 +15,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using YoutubeExplode.Search;
 using YoutubeExplode.Videos;
 
 namespace Jellyfin.Plugin.JellyTheme;
@@ -25,6 +28,9 @@ namespace Jellyfin.Plugin.JellyTheme;
 [Route("JellyTheme")]
 public class ThemePickerController : ControllerBase
 {
+    // Searches are kept for an hour: searching again or reopening the page is instant, and YouTube sees fewer requests.
+    private static readonly ConcurrentDictionary<string, (DateTime At, Task<IReadOnlyList<VideoSearchResult>> Search)> Searches = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly ILibraryManager _libraryManager;
     private readonly ThemeService _themes;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -72,12 +78,12 @@ public class ThemePickerController : ControllerBase
             }));
 
     /// <summary>
-    /// Searches YouTube for theme candidates.
+    /// Searches YouTube for theme candidates. Without typed words, several wordings run at once and their results are joined.
     /// </summary>
     /// <param name="itemId">Movie or series id.</param>
-    /// <param name="query">Search text; defaults to <see cref="ThemeSearch.DefaultQuery"/>.</param>
+    /// <param name="query">Search text; defaults to the searches from <see cref="ThemeSearch.Queries"/>.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The 5 most theme-like of the top 20 YouTube results.</returns>
+    /// <returns>The 6 most theme-like results.</returns>
     [HttpGet("Candidates/{itemId}")]
     public async Task<ActionResult> Candidates(Guid itemId, [FromQuery] string? query, CancellationToken cancellationToken)
     {
@@ -87,18 +93,37 @@ public class ThemePickerController : ControllerBase
             return NotFound();
         }
 
-        query = string.IsNullOrWhiteSpace(query) ? DefaultQuery(item) : query;
-        try
+        // The page sends the default query back unchanged; that means "search the usual way".
+        var queries = string.IsNullOrWhiteSpace(query) || query.Trim() == DefaultQuery(item) ? Queries(item) : [query.Trim()];
+        var lists = await Task.WhenAll(queries.Select(q => SearchAsync(q))).ConfigureAwait(false);
+        if (lists.All(l => l is null))
         {
-            var found = await YouTubeAudio.SearchAsync(_httpClientFactory.CreateClient(), query, 20, cancellationToken).ConfigureAwait(false);
-            var videos = ThemeSearch.Best(found, v => ThemeSearch.Score(SearchName(item), v.Title, v.Author.ChannelTitle, v.Duration), 5);
-            _themes.PrefetchPreviews(videos.Select(v => v.Id));
-            return Ok(videos.Select(v => new { Id = v.Id.Value, v.Title, Author = v.Author.ChannelTitle, Duration = v.Duration?.TotalSeconds }));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, "YouTube search failed for {Query}", query);
             return StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        var year = item is Movie ? item.ProductionYear : null;
+        var videos = ThemeSearch.Best(
+                ThemeSearch.Merge(lists.Where(l => l is not null)!, v => v.Id.Value),
+                x => ThemeSearch.Score(SearchName(item), x.Result.Title, x.Result.Author.ChannelTitle, x.Result.Duration, year) + Math.Min(x.Hits - 1, 2),
+                6)
+            .Select(x => x.Result)
+            .ToList();
+
+        // Audio for the top picks starts downloading now, so saving one is instant.
+        _themes.PrefetchPreviews(videos.Take(2).Select(v => v.Id));
+        return Ok(videos.Select(v => new { Id = v.Id.Value, v.Title, Author = v.Author.ChannelTitle, Duration = v.Duration?.TotalSeconds }));
+
+        async Task<IReadOnlyList<VideoSearchResult>?> SearchAsync(string q)
+        {
+            try
+            {
+                return await CachedSearch(q).WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "YouTube search failed for {Query}", q);
+                return null;
+            }
         }
     }
 
@@ -183,9 +208,27 @@ public class ThemePickerController : ControllerBase
         }
     }
 
+    // One shared search per query; a failed one is dropped so the next try asks YouTube again.
+    private Task<IReadOnlyList<VideoSearchResult>> CachedSearch(string query)
+    {
+        var now = DateTime.UtcNow;
+        if (Searches.Count > 500)
+        {
+            Searches.Clear(); // ponytail: wholesale reset, an LRU if people search thousands of items an hour
+        }
+
+        var entry = Searches.AddOrUpdate(
+            query,
+            _ => (now, YouTubeAudio.SearchAsync(_httpClientFactory.CreateClient(), query, CancellationToken.None)),
+            (_, old) => old.At > now - YouTubeAudio.CacheLifetime && !old.Search.IsFaulted ? old : (now, YouTubeAudio.SearchAsync(_httpClientFactory.CreateClient(), query, CancellationToken.None)));
+        return entry.Search;
+    }
+
     private static string SearchName(BaseItem item) => item is BoxSet ? ThemeSearch.CollectionName(item.Name) : item.Name;
 
     // Collections search like a movie without a year: "The Matrix main theme".
-    private static string DefaultQuery(BaseItem item)
-        => ThemeSearch.DefaultQuery(SearchName(item), item is BoxSet ? null : item.ProductionYear, item is not Series);
+    private static IReadOnlyList<string> Queries(BaseItem item)
+        => ThemeSearch.Queries(SearchName(item), item is BoxSet ? null : item.ProductionYear, item is not Series, item is BoxSet ? null : item.OriginalTitle);
+
+    private static string DefaultQuery(BaseItem item) => Queries(item)[0];
 }
