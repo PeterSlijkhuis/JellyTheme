@@ -1,0 +1,20 @@
+name: Test
+
+# Builds and runs the tests on every push to development and on every pull request,
+# so a broken change shows up before merging instead of at release time.
+on:
+  push:
+    branches: [development]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - run: dotnet test

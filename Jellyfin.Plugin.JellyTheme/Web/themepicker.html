@@ -109,8 +109,24 @@
         @media (prefers-reduced-motion: reduce) {
             #JellyThemePage .jt-skel { animation: none; }
             #JellyThemePage .jt-switch, #JellyThemePage .jt-switch::after, #JellyThemePage .jt-playicon { transition: none; }
+            #JellyThemePage .jt-added b { animation: none; }
         }
         #JellyThemePage .jt-copy .jt-input { flex: 1 1 14em; min-width: 0; }
+
+        #JellyThemePage .jt-added { cursor: default; border-color: var(--jt-accent-2); }
+        #JellyThemePage .jt-added b { animation: jt-bump 0.45s ease-out; }
+        @keyframes jt-bump { 40% { transform: scale(1.35); } }
+        #JellyThemePage .jt-quickbar {
+            position: fixed; z-index: 1000; left: 50%; bottom: 1em; transform: translateX(-50%); width: max-content; max-width: calc(100% - 2em); box-sizing: border-box;
+            display: flex; gap: 0.5em; flex-wrap: wrap; align-items: center; padding: 0.7em 0.8em; border-radius: var(--jt-radius);
+            background: rgba(16, 16, 24, 0.92); color: #fff; border: 1px solid var(--jt-accent-2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); backdrop-filter: blur(8px);
+        }
+        #JellyThemePage .jt-quickbar[hidden] { display: none; }
+        #JellyThemePage .jt-quickname { display: flex; flex-direction: column; min-width: 8em; max-width: 18em; margin-right: 0.4em; }
+        #JellyThemePage .jt-quickname b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #JellyThemePage .jt-quickbar kbd { margin-left: 0.4em; padding: 0 0.35em; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); font: inherit; font-size: 0.75em; opacity: 0.8; }
+        #JellyThemePage .jt-confetti { position: fixed; z-index: 1001; width: 8px; height: 12px; border-radius: 2px; pointer-events: none; animation: jt-confetti 1.1s cubic-bezier(0.2, 0.7, 0.4, 1) forwards; }
+        @keyframes jt-confetti { to { transform: translate(var(--x), var(--y)) rotate(var(--r)); opacity: 0; } }
 
         @media (max-width: 700px) {
             #JellyThemePage .jt-card { padding: 0.9em; }
@@ -119,6 +135,10 @@
             #JellyThemePage .jt-stats { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
             #JellyThemePage .jt-results { grid-template-columns: 1fr; }
             #JellyThemePage .jt-result.jt-wide { grid-column: auto; }
+            #JellyThemePage .jt-quickbar kbd { display: none; }
+            #JellyThemePage .jt-quickname { flex-basis: 100%; max-width: none; }
+            #JellyThemePage .jt-quickbar { width: calc(100% - 2em); }
+            #JellyThemePage .jt-quickbar .jt-btn { flex: 1 1 0; padding: 0.6em 0.4em; font-size: 0.9em; }
         }
     </style>
     <div data-role="content">
@@ -145,10 +165,18 @@
                 <button type="button" class="jt-toggle" role="switch" id="jtScope" aria-checked="false">
                     <span class="jt-switch"></span><span>Also items with a theme</span>
                 </button>
+                <button type="button" class="jt-btn primary" id="jtQuick" title="One item after another, best match already playing">Quick pick</button>
             </div>
             <p id="jtStatus" class="jt-muted">Loading...</p>
             <div id="jtList"></div>
             <button id="jtMore" type="button" class="jt-btn" style="display:none">Show more</button>
+            <div id="jtQuickBar" class="jt-quickbar" hidden>
+                <div class="jt-quickname"><small id="jtQuickCount" class="jt-muted">Quick pick</small><b id="jtQuickName"></b></div>
+                <button type="button" class="jt-btn primary" data-quick="use">Use this<kbd>Enter</kbd></button>
+                <button type="button" class="jt-btn" data-quick="next">Next result<kbd>&rarr;</kbd></button>
+                <button type="button" class="jt-btn" data-quick="skip">Skip<kbd>S</kbd></button>
+                <button type="button" class="jt-btn" data-quick="stop">Stop<kbd>Esc</kbd></button>
+            </div>
         </div>
     </div>
     <script type="text/javascript">
@@ -161,11 +189,16 @@
             const status = page.querySelector('#jtStatus');
             const list = page.querySelector('#jtList');
             const more = page.querySelector('#jtMore');
+            const quickButton = page.querySelector('#jtQuick');
+            const quickBar = page.querySelector('#jtQuickBar');
+            const quickName = page.querySelector('#jtQuickName');
+            const quickCount = page.querySelector('#jtQuickCount');
             const PAGE_SIZE = 30;
             const PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
             let items = [];
             let limit = PAGE_SIZE;
             let type = '';
+            let added = 0; // themes saved since the page opened
 
             const all = () => scope.getAttribute('aria-checked') === 'true';
 
@@ -380,11 +413,12 @@
                     });
                     return b;
                 };
-                stats.replaceChildren(stat('', all() ? 'All items' : 'Missing'), stat('Movie', 'Movies'), stat('Series', 'Shows'), stat('Collection', 'Collections'));
+                stats.replaceChildren(stat('', all() ? 'All items' : 'Missing'), stat('Movie', 'Movies'), stat('Series', 'Shows'), stat('Collection', 'Collections'),
+                    ...(added ? [el('div', { className: 'jt-stat jt-added' }, el('b', { textContent: added }), el('small', { textContent: 'Added now' }))] : []));
             }
 
             function render() {
-                stop();
+                quickEnd();
                 queue.length = 0;
                 seen.disconnect();
                 renderStats();
@@ -469,6 +503,9 @@
                 });
 
                 const node = el('div', { className: 'jt-card' }, poster, body);
+                node.jtLabel = label(item);
+                // Resolves to the first result tile once results are there, searching if needed.
+                node.jtFirst = () => (busy || (results.childNodes.length ? Promise.resolve() : search())).then(() => results.querySelector('.jt-result'));
                 node.jtAutoSearch = () => (node.isConnected && !results.childNodes.length ? search() : Promise.resolve());
                 seen.observe(node);
                 return node;
@@ -497,6 +534,8 @@
                     use);
                 const tile = el('div', { className: 'jt-result' }, thumb, info);
                 thumb.append(face(tile, thumb, video));
+                tile.jtPlay = () => play(tile, thumb, video);
+                tile.jtUse = () => use.click();
 
                 use.addEventListener('click', async () => {
                     use.disabled = true;
@@ -519,18 +558,16 @@
                 return tile;
             }
 
-            // On phones github.com links open in the GitHub app, which drops the pre-filled form fields.
-            // These links skip the app: Chrome on Android via an intent, Safari on iOS 17+ via x-safari-https.
-            // Desktop browsers get null and just use the normal link.
-            function inBrowser(url) {
-                const ua = navigator.userAgent;
-                if (/Android/i.test(ua)) {
-                    return 'intent://' + url.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
-                }
-                if (/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
-                    return 'x-safari-' + url;
-                }
-                return null;
+            // Opens an outside link. In the Jellyfin phone apps the page lives in a web view, so a plain link would
+            // replace Jellyfin itself; NativeShell.openUrl hands the link to the phone's browser instead.
+            function external(a) {
+                a.addEventListener('click', e => {
+                    if (window.NativeShell && window.NativeShell.openUrl) {
+                        e.preventDefault();
+                        window.NativeShell.openUrl(a.href, '_blank');
+                    }
+                });
+                return a;
             }
 
             // GitHub sometimes opens the form without our values (the GitHub mobile app, or after signing in),
@@ -561,6 +598,10 @@
 
             // After saving: confirm, offer sharing the pick with ThemerrDB, and let the user remove the card.
             function done(item, body, submitUrl, seconds) {
+                const node = body.parentElement;
+                node.jtDone = true;
+                added++;
+                celebrate(node);
                 const close = button('Done');
                 close.addEventListener('click', () => body.parentElement.remove());
                 const actions = el('div', { className: 'jt-row' });
@@ -571,7 +612,7 @@
                 ];
                 if (submitUrl) {
                     // ThemerrDB's theme guidelines: 0:20 to 5:00, audible early, not age or region locked, not a fan edit or trailer.
-                    const guidelines = el('a', { href: 'https://github.com/LizardByte/ThemerrDB/blob/master/docs/themeGuidelines.md', target: '_blank', rel: 'noopener', textContent: 'theme guidelines' });
+                    const guidelines = external(el('a', { href: 'https://github.com/LizardByte/ThemerrDB/blob/master/docs/themeGuidelines.md', target: '_blank', rel: 'noopener', textContent: 'theme guidelines' }));
                     children.push(el('p', { className: 'jt-message jt-muted' },
                         'Sure it is the right one? Submit it to ThemerrDB so every Themerr and JellyTheme user gets it automatically. ',
                         'This opens their request form on GitHub with the TMDB link and YouTube link filled in; check it and press Create. It needs a free GitHub account. ',
@@ -579,14 +620,10 @@
                     if (seconds && (seconds < 20 || seconds > 300)) {
                         children.push(el('p', { className: 'jt-message', textContent: 'Note: this video is ' + clock(seconds) + ' long. ThemerrDB prefers themes between 0:20 and 5:00, so it may be turned down.' }));
                     }
-                    // App-switching links can't open in a new tab, so only the normal link gets one.
-                    const link = (href, text, primary) => el('a', { href, target: href.startsWith('https:') ? '_blank' : '', rel: 'noopener', className: 'jt-btn' + (primary ? ' primary' : ''), textContent: text });
-                    const browser = inBrowser(submitUrl);
-                    if (browser) {
-                        actions.append(link(browser, 'Submit in browser', true), link(submitUrl, 'Submit in GitHub app', false), close);
-                    } else {
-                        actions.append(link(submitUrl, 'Submit to ThemerrDB', true), close);
-                    }
+                    const submit = external(el('a', { href: submitUrl, target: '_blank', rel: 'noopener', className: 'jt-btn primary', textContent: 'Submit to ThemerrDB' }));
+                    // The GitHub app can open the form empty; with the YouTube link already copied that's one paste.
+                    submit.addEventListener('click', () => navigator.clipboard && navigator.clipboard.writeText(new URL(submitUrl).searchParams.get('youtube_theme_url')).catch(() => { }));
+                    actions.append(submit, close);
                     extra = formValues(submitUrl);
                 } else {
                     children.push(el('p', { className: 'jt-message jt-muted', textContent: 'This item has no TMDB id, so it cannot be submitted to ThemerrDB.' }));
@@ -598,7 +635,114 @@
                 if (!all()) {
                     status.textContent = needed(items.length);
                 }
+                if (quickCard === node) {
+                    quickTo(nextCard(node));
+                }
             }
+
+            function celebrate(node) {
+                if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    return;
+                }
+                const r = node.getBoundingClientRect();
+                for (let i = 0; i < 28; i++) {
+                    const bit = el('span', { className: 'jt-confetti' });
+                    bit.style.left = r.left + r.width / 2 + 'px';
+                    bit.style.top = Math.max(r.top, 0) + 60 + 'px';
+                    bit.style.background = ['#aa5cc3', '#00a4dc', '#ffd166', '#ffffff'][i % 4];
+                    bit.style.setProperty('--x', Math.round((Math.random() * 2 - 1) * 260) + 'px');
+                    bit.style.setProperty('--y', Math.round((Math.random() * 2 - 1.3) * 160) + 'px');
+                    bit.style.setProperty('--r', Math.round(Math.random() * 720) + 'deg');
+                    page.append(bit);
+                    setTimeout(() => bit.remove(), 1200);
+                }
+            }
+
+            // ---- Quick pick: one card after another with its best match already playing. Enter saves and moves on.
+            const CHEERS = ['Nice!', 'Got it!', 'Another one!', 'Sounds right!', 'On a roll!', 'Encore!'];
+            let quickCard = null;
+
+            // The next card that still needs a pick, loading the next page of cards when the list runs out.
+            function nextCard(node) {
+                let next = node ? node.nextElementSibling : list.firstElementChild;
+                while (next && next.jtDone) {
+                    next = next.nextElementSibling;
+                }
+                if (!next && more.style.display !== 'none') {
+                    const last = list.lastElementChild;
+                    more.click();
+                    return nextCard(last);
+                }
+                return next;
+            }
+
+            function quickTo(node) {
+                stop();
+                quickCard = node;
+                quickBar.hidden = !node;
+                if (added) {
+                    quickCount.textContent = CHEERS[added % CHEERS.length] + ' ' + added + ' added';
+                }
+                if (!node) {
+                    status.textContent = 'That was the last one.' + (added ? ' ' + added + ' added this time.' : '');
+                    return;
+                }
+                quickName.textContent = node.jtLabel;
+                node.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                node.jtFirst().then(tile => {
+                    if (quickCard !== node) {
+                        return;
+                    }
+                    if (tile) {
+                        tile.jtPlay();
+                    } else {
+                        quickName.textContent = node.jtLabel + ': no results, skip it or type other words';
+                    }
+                    // Have the next one ready by the time this pick is made.
+                    const next = node.nextElementSibling;
+                    next && next.jtFirst && !next.jtDone && next.jtFirst();
+                });
+            }
+
+            function quickEnd() {
+                stop();
+                quickCard = null;
+                quickBar.hidden = true;
+            }
+
+            const quick = {
+                use: () => {
+                    const tile = current && quickCard.contains(current.tile) ? current.tile : quickCard.querySelector('.jt-result');
+                    tile && tile.jtUse();
+                },
+                next: () => {
+                    const tiles = Array.from(quickCard.querySelectorAll('.jt-result'));
+                    if (tiles.length) {
+                        tiles[(tiles.indexOf(current && current.tile) + 1) % tiles.length].jtPlay();
+                    } else {
+                        quick.skip();
+                    }
+                },
+                skip: () => quickTo(nextCard(quickCard)),
+                stop: quickEnd
+            };
+            const QUICK_KEYS = { enter: 'use', arrowright: 'next', n: 'next', s: 'skip', escape: 'stop' };
+
+            quickButton.addEventListener('click', () => quickTo(nextCard(null)));
+            quickBar.addEventListener('click', e => {
+                const b = e.target.closest('[data-quick]');
+                b && quickCard && quick[b.dataset.quick]();
+            });
+            document.addEventListener('keydown', e => {
+                const action = QUICK_KEYS[e.key.toLowerCase()];
+                if (!quickCard || !action || e.repeat || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) {
+                    return;
+                }
+                // Also stops Enter from pressing the focused button, and Jellyfin's own keys (Esc goes back) from firing too.
+                e.preventDefault();
+                e.stopPropagation();
+                quick[action]();
+            });
 
             filter.addEventListener('input', () => {
                 limit = PAGE_SIZE;
@@ -616,7 +760,7 @@
                 updateMore(shown.length);
             });
             page.addEventListener('pagehide', () => {
-                stop();
+                quickEnd();
                 queue.length = 0;
             });
 
