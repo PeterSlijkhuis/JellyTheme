@@ -62,6 +62,18 @@ public class ThemerrDbTests
         Assert.Contains("https://www.youtube.com/watch?v=old", collection["replacement_reason"]);
     }
 
+    [Fact]
+    public void OnlyThemerrDbFormIsASubmitUrl()
+    {
+        Assert.True(ThemerrDb.IsSubmitUrl(ThemerrDb.SubmitUrl(ThemerrDb.Kind.Movie, "The Matrix", 1999, "603", "SLBACEP6LsI")));
+        Assert.False(ThemerrDb.IsSubmitUrl(null));
+        Assert.False(ThemerrDb.IsSubmitUrl("http://github.com/LizardByte/ThemerrDB/issues/new"));
+        Assert.False(ThemerrDb.IsSubmitUrl("https://github.com.evil.example/LizardByte/ThemerrDB/issues/new"));
+        Assert.False(ThemerrDb.IsSubmitUrl("https://evil@github.com/LizardByte/ThemerrDB/issues/new"));
+        Assert.False(ThemerrDb.IsSubmitUrl("https://github.com/someone/else/issues/new"));
+        Assert.False(ThemerrDb.IsSubmitUrl("javascript:alert(1)"));
+    }
+
     private static HttpResponseMessage Json(string body)
         => new(HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
 

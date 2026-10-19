@@ -79,5 +79,18 @@ public static class ThemerrDb
             : url + "&replacement_reason=" + Uri.EscapeDataString($"The current theme ({replacing}) could not be downloaded; it may be removed, private or region locked.");
     }
 
+    /// <summary>
+    /// Whether a link is ThemerrDB's new issue form, so the Submit hop page can't be used to send people anywhere else.
+    /// </summary>
+    /// <param name="url">The link to check.</param>
+    /// <returns>True for https://github.com/LizardByte/ThemerrDB/issues/new links only.</returns>
+    public static bool IsSubmitUrl(string? url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri)
+           && uri.Scheme == Uri.UriSchemeHttps
+           && uri.IsDefaultPort
+           && string.IsNullOrEmpty(uri.UserInfo)
+           && uri.Host == "github.com"
+           && uri.AbsolutePath == "/LizardByte/ThemerrDB/issues/new";
+
     private sealed record Entry([property: JsonPropertyName("youtube_theme_url")] string? YouTubeThemeUrl);
 }
