@@ -48,16 +48,17 @@ public class ThemerrDbTests
         Assert.Equal("/LizardByte/ThemerrDB/issues/new", url.AbsolutePath);
         Assert.Equal("theme.yml", query["template"]);
         Assert.Equal("request-theme", query["labels"]);
-        Assert.Equal("[THEME]: The Matrix (1999)", query["title"]);
+        Assert.Equal("[MOVIE]: The Matrix (1999)", query["title"]);
         Assert.Equal("https://www.themoviedb.org/movie/603", query["database_url"]);
         Assert.Equal("https://www.youtube.com/watch?v=SLBACEP6LsI", query["youtube_theme_url"]);
         Assert.Null(query["replacement_reason"]);
 
         var show = System.Web.HttpUtility.ParseQueryString(new Uri(ThemerrDb.SubmitUrl(ThemerrDb.Kind.Show, "Friends & Co", null, "1668", "x")).Query);
-        Assert.Equal("[THEME]: Friends & Co", show["title"]);
+        Assert.Equal("[TV SHOW]: Friends & Co", show["title"]);
         Assert.Equal("https://www.themoviedb.org/tv/1668", show["database_url"]);
 
         var collection = System.Web.HttpUtility.ParseQueryString(new Uri(ThemerrDb.SubmitUrl(ThemerrDb.Kind.Collection, "The Matrix Collection", null, "2344", "x", "https://www.youtube.com/watch?v=old")).Query);
+        Assert.Equal("[MOVIE COLLECTION]: The Matrix Collection", collection["title"]);
         Assert.Equal("https://www.themoviedb.org/collection/2344", collection["database_url"]);
         Assert.Contains("https://www.youtube.com/watch?v=old", collection["replacement_reason"]);
     }
