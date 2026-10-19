@@ -214,14 +214,15 @@ public class ThemePickerController : ControllerBase
 
         var href = System.Net.WebUtility.HtmlEncode(new Uri(to!).AbsoluteUri);
         // On Android even this redirect gets handed to the GitHub app, so there the link becomes an intent that names
-        // Chrome as the app to open it with. That skips the GitHub app, and from a real browser tab it's allowed.
+        // Chrome as the app to open it with. That skips the GitHub app, and from a real browser tab it's allowed;
+        // inside an app's web view it fails, so there the plain redirect stays.
         return Content(
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Submit to ThemerrDB</title></head>"
             + "<body style=\"font-family:sans-serif;padding:1.5em;line-height:1.5\"><p>Opening the ThemerrDB form...</p>"
             + $"<p><a id=\"go\" href=\"{href}\" style=\"display:inline-block;padding:.8em 1.2em;border-radius:10px;background:#00a4dc;color:#fff;text-decoration:none;font-weight:600\">Open the form</a></p>"
             + "<p style=\"opacity:.7\">If nothing happens, tap the button.</p>"
             + "<script>var go = document.getElementById('go');"
-            + "if (/Android/i.test(navigator.userAgent)) { go.href = 'intent://' + go.href.replace(/^https:\\/\\//, '') + '#Intent;scheme=https;package=com.android.chrome;end'; go.textContent = 'Open the form in Chrome'; }"
+            + "if (/Android/i.test(navigator.userAgent) && !/; wv\\)/.test(navigator.userAgent)) { go.href = 'intent://' + go.href.replace(/^https:\\/\\//, '') + '#Intent;scheme=https;package=com.android.chrome;end'; go.textContent = 'Open the form in Chrome'; }"
             + "setTimeout(function () { location.replace(go.href); }, 300);</script></body></html>",
             "text/html; charset=utf-8");
     }

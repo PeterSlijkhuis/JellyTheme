@@ -621,7 +621,10 @@
                         children.push(el('p', { className: 'jt-message', textContent: 'Note: this video is ' + clock(seconds) + ' long. ThemerrDB prefers themes between 0:20 and 5:00, so it may be turned down.' }));
                     }
                     // Goes through a page on this server first, so phones open the form in the browser, filled in, instead of the GitHub app.
-                    const submit = external(el('a', { href: ApiClient.getUrl('JellyTheme/Submit', { to: submitUrl }), target: '_blank', rel: 'noopener', className: 'jt-btn primary', textContent: 'Submit to ThemerrDB' }));
+                    // Not inside the Jellyfin Android app ("; wv)" web view): it opens pages on its own server inside the app, where the
+                    // page's Chrome link fails and the app falls back to its connect to server screen. A github.com link leaves the app fine.
+                    const inApp = /; wv\)/.test(navigator.userAgent);
+                    const submit = external(el('a', { href: inApp ? submitUrl : ApiClient.getUrl('JellyTheme/Submit', { to: submitUrl }), target: '_blank', rel: 'noopener', className: 'jt-btn primary', textContent: 'Submit to ThemerrDB' }));
                     // The GitHub app can open the form empty; with the YouTube link already copied that's one paste.
                     submit.addEventListener('click', () => navigator.clipboard && navigator.clipboard.writeText(new URL(submitUrl).searchParams.get('youtube_theme_url')).catch(() => { }));
                     actions.append(submit, close);
