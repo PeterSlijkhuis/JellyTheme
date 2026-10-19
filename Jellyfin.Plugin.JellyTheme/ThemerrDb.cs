@@ -60,7 +60,7 @@ public static class ThemerrDb
     /// the TMDB page as Database URL and a plain watch?v= link as the YouTube URL. The form fields become the issue body.
     /// </summary>
     /// <param name="kind">What the TMDB id belongs to.</param>
-    /// <param name="name">Item name, only for the title; ThemerrDB's bot renames the issue anyway.</param>
+    /// <param name="name">Item name for the title, which uses the same [MOVIE] or [TV SHOW] prefix ThemerrDB's bot gives issues.</param>
     /// <param name="year">Production year, if known.</param>
     /// <param name="tmdbId">TMDB id; ThemerrDB keys everything on it.</param>
     /// <param name="videoId">YouTube video id.</param>
@@ -68,7 +68,7 @@ public static class ThemerrDb
     /// <returns>The form link.</returns>
     public static string SubmitUrl(Kind kind, string name, int? year, string tmdbId, string videoId, string? replacing = null)
     {
-        var title = $"[THEME]: {name}{(year is null ? string.Empty : $" ({year})")}";
+        var title = $"[{kind switch { Kind.Movie => "MOVIE", Kind.Show => "TV SHOW", _ => "MOVIE COLLECTION" }}]: {name}{(year is null ? string.Empty : $" ({year})")}";
         var database = $"https://www.themoviedb.org/{kind switch { Kind.Movie => "movie", Kind.Show => "tv", _ => "collection" }}/{tmdbId}";
         var url = "https://github.com/LizardByte/ThemerrDB/issues/new?assignees=&labels=request-theme&template=theme.yml"
                   + "&title=" + Uri.EscapeDataString(title)
