@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/PeterSlijkhuis/JellyTheme/main/assets/banner.png",
     "versions": [
       {
+        "version": "1.0.14.0",
+        "changelog": "Bug fixes and improvements.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/PeterSlijkhuis/JellyTheme/releases/download/v1.0.14.0/jellytheme_1.0.14.0.zip",
+        "checksum": "9fedfdb34065abfd138ea9a74e0f6a36",
+        "timestamp": "2026-10-20T10:16:08Z"
+      },
+      {
         "version": "1.0.13.0",
         "changelog": "Bug fixes and improvements.",
         "targetAbi": "12.1.0.0",
