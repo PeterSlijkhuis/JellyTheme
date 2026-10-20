@@ -558,15 +558,19 @@
                 return tile;
             }
 
-            // Opens an outside link. In the Jellyfin phone apps the page lives in a web view, so a plain link would
-            // replace Jellyfin itself; NativeShell.openUrl hands the link to the phone's browser instead.
+            // Opens an outside link. In the Jellyfin phone apps this page lives in a web view: following a link there loads it
+            // in place of Jellyfin, and the app drops to its connect to server screen when that page leaves. So in the apps the
+            // link loses its href (nothing left to navigate) and NativeShell.openUrl hands it to the phone instead.
             function external(a) {
-                a.addEventListener('click', e => {
-                    if (window.NativeShell && window.NativeShell.openUrl) {
-                        e.preventDefault();
-                        window.NativeShell.openUrl(a.href, '_blank');
-                    }
-                });
+                if (window.NativeShell && window.NativeShell.openUrl) {
+                    const url = a.href;
+                    a.removeAttribute('href');
+                    a.removeAttribute('target');
+                    Object.assign(a, { role: 'link', tabIndex: 0 });
+                    a.style.cursor = 'pointer';
+                    a.addEventListener('click', () => window.NativeShell.openUrl(url, '_blank'));
+                    a.addEventListener('keydown', e => e.key === 'Enter' && a.click());
+                }
                 return a;
             }
 
